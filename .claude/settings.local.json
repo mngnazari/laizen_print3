@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(powershell -Command \"(Get-ChildItem -Recurse -File | Measure-Object).Count\")",
+      "Bash(powershell -Command \"Get-ChildItem -Directory | Select-Object Name\")",
+      "Bash(powershell:*)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}

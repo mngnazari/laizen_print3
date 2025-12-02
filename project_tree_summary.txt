@@ -1,0 +1,276 @@
+C:\new_kaizen_print
+├── database\
+│   ├── __init__.py
+│   │   • (no significant definitions)
+│   ├── broadcast_crud.py
+│   │   • function (12): create_broadcast_log, create_broadcast_message, get_active_discounts, get_all_broadcasts, get_broadcast_by_id, get_broadcast_logs, get_broadcast_statistics, get_broadcasts_by_type, get_customer_broadcast_history, get_discount_by_id, is_discount_currently_active, update_broadcast_stats
+│   ├── broadcast_models.py
+│   │   • class (2): BroadcastLog, BroadcastMessage
+│   │   • sqlalchemy_models (2): BroadcastLog, BroadcastMessage
+│   ├── connection.py
+│   │   • function (2): get_db, get_db_context
+│   ├── create_editor_tables.py
+│   │   • function (2): create_editor_tables, update_file_orders_table
+│   ├── crud.py
+│   │   • function (95): add_admin_if_not_exists, add_editor_if_not_exists, add_operator_if_not_exists, add_staff, add_visitor_if_not_exists, allocate_independent_income_to_vaults, allocate_receipt_to_vaults, buy_gold_for_vault, check_user_balance_sufficient, clear_delivery_schedules, confirm_receipt, count_unconfirmed_receipts, create_admin_referral_code, create_customer_referral_code, create_file_order, create_invoice, create_receipt, create_referral_code, create_user, create_vault (+75 more)
+│   │   • handlers (1): ConversationHandler
+│   ├── editor_crud.py
+│   │   • function (14): check_file_completion, check_filename_expected, complete_editor_session, create_editor_session, get_accessible_files_for_editor, get_editor_current_session, get_editor_progress_stats, get_editor_status, get_pending_files_for_editor, is_file_accessible_for_editor, log_filename_details, normalize_filename, receive_editor_file, save_mapping_file
+│   ├── editor_models.py
+│   │   • class (4): EditorFileMapping, EditorOriginalFile, EditorWorkSession, ProcessedFile
+│   │   • sqlalchemy_models (4): EditorFileMapping, EditorOriginalFile, EditorWorkSession, ProcessedFile
+│   ├── group_crud.py
+│   │   • function (6): calculate_group_monthly_stats, check_group_discount_eligibility_advanced, get_group_files_by_date_range, get_group_performance_summary, get_referrals_recursive, get_user_referral_tree
+│   ├── models.py
+│   │   • class (13): DeliverySchedule, FileOrder, Holiday, Invoice, Receipt, ReferralCode, Staff, SystemSettings, User, Vault, VaultGoldTransaction, VaultTransaction, WalletTransaction
+│   │   • sqlalchemy_models (13): DeliverySchedule, FileOrder, Holiday, Invoice, Receipt, ReferralCode, Staff, SystemSettings, User, Vault, VaultGoldTransaction, VaultTransaction, WalletTransaction
+│   └── schemas.py
+│       • class (3): FileOrderCreate, InvoiceCreate, UserCreate
+│       • function (2): validate_price, validate_weight
+├── handlers\
+│   ├── __init__.py
+│   │   • (no significant definitions)
+│   ├── admin.py
+│   │   • function (1): build_tree_string
+│   │   • handlers (1): ConversationHandler
+│   ├── admin_inline.py
+│   │   • (no significant definitions)
+│   ├── admin_settings.py
+│   │   • function (1): get_delivery_schedule_conversation
+│   │   • handlers (4): CallbackQueryHandler, CommandHandler, ConversationHandler, MessageHandler
+│   │   • callback_functions (2): cancel_delivery_setup, handle_delivery_start
+│   │   • commands (1): cancel
+│   │   • entry_points (1): entry_points=[
+            CallbackQueryHandler(
+                handle_delivery_start,
+                pattern=r'^admin_delivery_schedule$'
+            )
+        ]
+│   │   • fallbacks (1): fallbacks=[
+            CallbackQueryHandler(cancel_delivery_setup, pattern=r'^cancel_delivery_setup$'),
+            CommandHandler('cancel', cancel_delivery_setup)
+        ]
+│   ├── broadcast_handler.py
+│   │   • function (1): get_broadcast_conversation_handler
+│   │   • handlers (4): CallbackQueryHandler, CommandHandler, ConversationHandler, MessageHandler
+│   │   • callback_functions (4): cancel_broadcast, confirm_and_send_broadcast, edit_broadcast_message, select_broadcast_type
+│   │   • commands (1): cancel
+│   │   • entry_points (1): entry_points=[
+            CallbackQueryHandler(
+                select_broadcast_type,
+                pattern=r'^broadcast_(promotional|occasional)$'
+            )
+        ]
+│   │   • fallbacks (1): fallbacks=[
+            CallbackQueryHandler(cancel_broadcast, pattern=r'^broadcast_cancel$'),
+            CommandHandler('cancel', cancel_broadcast)
+        ]
+│   ├── customer.py
+│   │   • class (1): FakeMessage
+│   │   • function (1): __init__
+│   ├── customer_management.py
+│   │   • handlers (1): ConversationHandler
+│   ├── delivery_scheduler.py
+│   │   • function (3): calculate_delivery_time, calculate_file_times, calculate_sample_delivery_time
+│   │   • handlers (1): ConversationHandler
+│   ├── editor.py
+│   │   • function (2): escape_markdown, get_shamsi_time_display
+│   ├── editor_file_handler.py
+│   │   • (no significant definitions)
+│   ├── editor_status.py
+│   │   • function (3): get_customer_files_for_edit_deadline, get_files_for_edit_deadline, get_shamsi_time_display
+│   ├── file_archive.py
+│   │   • function (3): get_file_archive_keyboard, gregorian_to_jalali, gregorian_to_jalali_with_time
+│   ├── file_submission.py
+│   │   • function (5): calculate_delivery_datetime_j, convert_to_iran_time, format_delivery_datetime, get_persian_datetime, is_allowed_file
+│   ├── group_admin.py
+│   │   • function (2): get_gold_settings_conversation, get_silver_settings_conversation
+│   │   • handlers (4): CallbackQueryHandler, CommandHandler, ConversationHandler, MessageHandler
+│   │   • callback_functions (2): start_gold_settings, start_silver_settings
+│   │   • commands (1): cancel
+│   │   • entry_points (2): entry_points=[CallbackQueryHandler(start_gold_settings, pattern="^admin_group_gold$")], entry_points=[CallbackQueryHandler(start_silver_settings, pattern="^admin_group_silver$")]
+│   │   • fallbacks (1): fallbacks=[
+            CommandHandler("cancel", cancel_group_settings),
+            MessageHandler(filters.Regex("^لغو$"), cancel_group_settings)
+        ]
+│   ├── group_callbacks.py
+│   │   • (no significant definitions)
+│   ├── group_stats.py
+│   │   • (no significant definitions)
+│   ├── holiday_manager.py
+│   │   • function (4): create_holiday_calendar_keyboard, get_holiday_statistics, get_next_working_day, is_holiday
+│   ├── independent_income.py
+│   │   • handlers (1): ConversationHandler
+│   ├── mng.py
+│   │   • function (2): calculate_delivery_time, calculate_sample_delivery_time
+│   │   • handlers (1): ConversationHandler
+│   ├── operator.py
+│   │   • handlers (1): ConversationHandler
+│   ├── operator_files.py
+│   │   • function (1): count_total_ready_files
+│   ├── receipt_management.py
+│   │   • handlers (1): ConversationHandler
+│   ├── receipt_submission.py
+│   │   • handlers (1): ConversationHandler
+│   ├── registration.py
+│   │   • handlers (1): ConversationHandler
+│   ├── staff_management.py
+│   │   • function (1): get_staff_menu_keyboard
+│   │   • handlers (1): ConversationHandler
+│   ├── start.py
+│   │   • handlers (1): ConversationHandler
+│   ├── test_handler.py
+│   │   • handlers (2): CallbackQueryHandler, CommandHandler
+│   │   • callback_functions (2): handle_test_callback, handle_test_main_menu
+│   │   • commands (1): test
+│   ├── test_wallet.py
+│   │   • (no significant definitions)
+│   ├── transaction_viewer.py
+│   │   • function (4): create_transaction_filters_keyboard, create_transaction_navigation_keyboard, get_transaction_emoji_and_type, gregorian_to_jalali_full
+│   ├── vault_management.py
+│   │   • handlers (1): ConversationHandler
+│   └── wallet_invoice.py
+│       • function (3): create_invoice_navigation_keyboard, create_wallet_menu_keyboard, gregorian_to_jalali_with_time
+├── keyboards\
+│   ├── __init__.py
+│   │   • (no significant definitions)
+│   ├── admin.py
+│   │   • function (6): get_admin_back_button, get_admin_kb, get_admin_main_menu, get_customers_keyboard, get_group_settings_keyboard, get_wallet_management_keyboard
+│   ├── admin_settings.py
+│   │   • function (2): get_admin_settings_keyboard, get_delivery_setup_cancel_keyboard
+│   ├── broadcast_keyboards.py
+│   │   • function (7): get_broadcast_cancel_keyboard, get_broadcast_detail_keyboard, get_broadcast_history_keyboard, get_broadcast_main_keyboard, get_broadcast_preview_keyboard, get_broadcast_type_selection_keyboard, get_notification_settings_keyboard
+│   ├── customer.py
+│   │   • function (2): get_customer_inline_menu, get_customer_kb
+│   ├── customer_management.py
+│   │   • function (3): get_customer_operations_keyboard, get_customers_list_keyboard, get_transaction_history_keyboard
+│   ├── editor.py
+│   │   • function (6): calculate_edit_deadline_from_delivery, count_new_files_for_delivery_time, get_editor_customers_keyboard, get_editor_delivery_times_keyboard, get_editor_main_keyboard, get_editor_reply_keyboard
+│   ├── editor_status.py
+│   │   • function (4): get_editor_file_progress_keyboard, get_editor_main_keyboard_updated, get_editor_status_keyboard, get_file_assignment_confirmation_keyboard
+│   ├── file_keyboards.py
+│   │   • function (3): create_count_keyboard, create_final_cancel_keyboard, create_initial_keyboard
+│   ├── group_stats.py
+│   │   • function (3): get_date_selection_keyboard, get_group_stats_keyboard, get_members_list_keyboard
+│   ├── operator.py
+│   │   • function (6): create_customer_files_keyboard, create_customers_invoice_keyboard, create_invoice_navigation_keyboard, get_operator_invoice_submenu, get_operator_kb, get_operator_main_inline_keyboard
+│   ├── operator_files.py
+│   │   • function (3): get_customers_by_delivery_keyboard, get_delivery_times_keyboard, get_operator_files_main_keyboard
+│   ├── receipt_management.py
+│   │   • function (2): get_receipt_action_keyboard, get_receipts_list_keyboard
+│   ├── vault_management.py
+│   │   • function (6): get_expense_vault_selection_keyboard, get_gold_history_keyboard, get_gold_menu_keyboard, get_vault_detail_keyboard, get_vault_transactions_keyboard, get_vaults_list_keyboard
+│   └── vault_menu.py
+│       • function (1): get_vaults_menu_keyboard
+├── utils\
+│   ├── __init__.py
+│   │   • (no significant definitions)
+│   ├── broadcast_utils.py
+│   │   • function (7): format_shamsi_date_only, format_shamsi_datetime, format_time_only, get_current_iran_time, is_discount_active, parse_shamsi_datetime, validate_datetime_range
+│   ├── delivery_grouping.py
+│   │   • function (6): count_pending_files_by_delivery, count_ready_files_by_delivery, count_total_pending_files, count_total_ready_files, group_files_by_customer, group_files_by_delivery_time
+│   ├── discount_calculator.py
+│   │   • class (1): GroupDiscountCalculator
+│   │   • function (6): apply_group_discount, calculate_weekly_discount, check_user_group_discount_eligibility, format_discount_summary, get_discount_status_message, get_next_discount_tier_info
+│   ├── editor_state_manager.py
+│   │   • class (1): EditorStateManager
+│   │   • function (10): __init__, assign_new_files, can_receive_mapping, can_receive_new_files, can_receive_processed_files, get_current_state, get_detailed_status, get_pending_files_list, get_state_description, process_file_reception
+│   ├── factor.py
+│   │   • function (1): generate_invoice
+│   ├── file_naming.py
+│   │   • function (2): generate_operator_filename, parse_operator_filename
+│   ├── group_analytics.py
+│   │   • function (5): calculate_group_daily_stats, calculate_weekly_group_stats, check_group_discount_eligibility, format_group_stats_message, get_user_group_members
+│   ├── group_config.py
+│   │   • class (1): GroupDiscountConfig
+│   │   • function (10): enable_feature, format_discount_config_message, get_all_settings, get_daily_threshold, get_discount_rates, is_feature_enabled, reset_to_defaults, set_daily_threshold, set_discount_rates, validate_discount_rates
+│   ├── group_settings.py
+│   │   • class (1): GroupLevelSettings
+│   │   • function (3): get_group_level, get_settings, update_settings
+│   ├── mapping_parser.py
+│   │   • function (9): debug_mapping_content, determine_file_requirements, get_expected_filenames, get_file_type_from_extension, is_filename_expected, log_filename_details, normalize_filename, parse_mapping_content, validate_mapping_format
+│   ├── notification_scheduler.py
+│   │   • (no significant definitions)
+│   ├── referral.py
+│   │   • function (5): create_referral_link, extract_referral_code, generate_referral_code, get_persian_datetime, validate_referral_code_format
+│   ├── staff_utils.py
+│   │   • function (10): _get_cached_or_fetch, clear_staff_cache, get_editors_ids, get_operators_ids, get_user_role, get_visitors_ids, is_admin, is_editor, is_operator, is_visitor
+│   └── stl_renderer.py
+│       • function (3): look_at, process_stl_files, render_stl_to_jpg
+├── config.py
+│   • (no significant definitions)
+├── function_extractor.py
+│   • function (6): build_tree_structure, ensure_node, is_excluded_dir, main, pretty_print, summarize_file
+│   • handlers (4): CallbackQueryHandler, CommandHandler, ConversationHandler, MessageHandler
+└── main.py
+    • function (2): initialize_default_settings, main
+    • handlers (4): CallbackQueryHandler, CommandHandler, ConversationHandler, MessageHandler
+    • callback_functions (57): broadcast_start, cancel_delivery_setup, cancel_invoice_handler, cancel_staff_add, get_expense_amount, handle_admin_callbacks, handle_admin_settings_callbacks, handle_admin_transaction_view, handle_archive_callback_unique, handle_callback_query, handle_customer_file_selection, handle_customer_inline_callbacks, handle_customer_operations_callback, handle_customer_selection_callback, handle_editor_callbacks, handle_finish_callback, handle_group_stats_callbacks, handle_invoice_navigation, handle_no_files, handle_operator_callbacks (+37 more)
+    • commands (7): admin, cancel, files, setdelay, skip, start, test
+    • entry_points (17): entry_points=[
+            CallbackQueryHandler(handle_customer_file_selection, pattern=r'^select_customer_\d+$'),
+            CallbackQueryHandler(handle_customer_file_selection, pattern=r'^toggle_file_\d+$'),
+            CallbackQueryHandler(handle_customer_file_selection, pattern=r'^issue_invoice_\d+$'),
+            CallbackQueryHandler(handle_customer_file_selection, pattern=r'^back_to_customers_list$')
+        ], entry_points=[
+            CallbackQueryHandler(handle_staff_callbacks, pattern=r"^staff_(add_editor|add_operator|add_visitor)$")
+        ], entry_points=[
+            CallbackQueryHandler(show_customers_list, pattern=r"^admin_customer_mgmt$"),
+            MessageHandler(
+                filters.Regex(r'^👥 مدیریت مشتریان$') & filters.User(user_id=ADMIN_ID),
+                show_customers_list
+            )
+        ], entry_points=[
+            CallbackQueryHandler(start_buy_gold, pattern=r'^gold_buy_\d+$')
+        ], entry_points=[
+            CallbackQueryHandler(start_charge_from_receipt, pattern=r"^admin_charge_receipt_")
+        ], entry_points=[
+            CallbackQueryHandler(start_create_vault, pattern=r'^vault_create_new$')
+        ], entry_points=[
+            CallbackQueryHandler(start_delivery_setup, pattern=r"^admin_delivery_schedule$")
+        ], entry_points=[
+            CallbackQueryHandler(start_expense_record, pattern=r'^vault_record_expense$'),
+            CallbackQueryHandler(get_expense_amount, pattern=r'^expense_vault_\d+$')
+        ], entry_points=[
+            CallbackQueryHandler(start_independent_income, pattern=r'^vault_independent_income$')
+        ], entry_points=[
+            CallbackQueryHandler(start_petty_cash_withdraw, pattern=r'^vault_petty_withdraw_\d+$')
+        ], entry_points=[
+            CallbackQueryHandler(start_receipt_submission, pattern=r"^submit_receipt$")
+        ], entry_points=[
+            CallbackQueryHandler(start_rename_vault, pattern=r'^vault_rename_\d+$')
+        ], entry_points=[
+            CallbackQueryHandler(start_sell_gold, pattern=r'^gold_sell_\d+$')
+        ], entry_points=[
+            CallbackQueryHandler(start_set_percent, pattern=r'^vault_set_percent_\d+$')
+        ], entry_points=[
+            MessageHandler(
+                filters.Regex("^⏰ تنظیم تاخیر دسترسی ادیتورها$") & filters.User(user_id=ADMIN_ID),
+                start_editor_delay_setting
+            )
+        ], entry_points=[CommandHandler("start", start_command)], entry_points=[MessageHandler(filters.Regex(r'^تنظیم سقف دعوت ⚙️$') & filters.User(user_id=ADMIN_ID),
+                                    set_referral_limit_start)]
+    • fallbacks (12): fallbacks=[
+            CommandHandler("cancel", cancel_customer_management),
+            MessageHandler(filters.Regex(r'^لغو$'), cancel_customer_management)
+        ], fallbacks=[
+            CommandHandler("cancel", cancel_invoice_handler),
+            CallbackQueryHandler(cancel_invoice_handler, pattern=r'^back_to_operator_menu$')
+        ], fallbacks=[
+            CommandHandler("cancel", cancel_receipt_submission),
+            MessageHandler(filters.Regex(r'^لغو$'), cancel_receipt_submission)
+        ], fallbacks=[
+            CommandHandler("cancel", cancel_staff_add),
+            CallbackQueryHandler(cancel_staff_add, pattern=r"^staff_menu$")
+        ], fallbacks=[
+            CommandHandler("cancel", lambda update, context: ConversationHandler.END)
+        ], fallbacks=[
+            CommandHandler('cancel', cancel_delivery_setup),
+            CallbackQueryHandler(cancel_delivery_setup, pattern=r"^admin_settings$")
+        ], fallbacks=[
+            CommandHandler('cancel', cancel_editor_delay_setting)
+        ], fallbacks=[
+            CommandHandler('cancel', cancel_independent_income)
+        ], fallbacks=[
+            CommandHandler('cancel', cancel_vault_operation)
+        ], fallbacks=[CommandHandler("cancel", cancel_handler)], fallbacks=[CommandHandler('cancel', cancel_vault_operation)], fallbacks=[MessageHandler(filters.Regex(r'^ثبت نام 📝$'), start_registration)]

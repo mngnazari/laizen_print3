@@ -1,0 +1,594 @@
+# handlers/file_submission.py - نسخه با timezone ایران
+import logging
+import os
+from datetime import datetime, timezone, timedelta
+import jdatetime
+from telegram import Update, InlineKeyboardMarkup, InlineKeyboardButton
+from telegram.ext import ContextTypes
+import asyncio
+import database.crud
+import database.connection
+from database import schemas
+from keyboards.file_keyboards import create_initial_keyboard, create_count_keyboard, create_final_cancel_keyboard
+from keyboards.customer import get_customer_kb
+# اضافه کردن import برای سیستم تحویل جدید
+from .delivery_scheduler import calculate_delivery_time
+from .holiday_manager import is_holiday, get_next_working_day
+# در بالای فایل file_submission.py اضافه کنید:
+from handlers.delivery_scheduler import calculate_file_times
+
+# و اینها را هم اضافه کنید اگر نیست:
+DEFAULT_PRINT_COUNT = 1
+
+logger = logging.getLogger(__name__)
+
+ADMIN_ID = 2138687434
+ALLOWED_FORMATS = {'.stl', '.zip', '.rar', '.3dm'}
+
+# تعریف timezone ایران
+IRAN_TZ = timezone(timedelta(hours=3, minutes=30))
+
+
+# در file_submission.py، تابع اعلان به ادیتورها را اضافه کنید:
+
+async def notify_editors_new_file(context, file_info):
+    """ارسال اعلان فایل جدید به همه ادیتورها"""
+    try:
+        from handlers.editor import EDITORS_IDS
+
+        # تبدیل به تاریخ شمسی
+        edit_deadline_j = jdatetime.datetime.fromtimestamp(file_info['edit_deadline'].timestamp())
+        edit_deadline_str = edit_deadline_j.strftime('%m/%d-%H:%M')
+
+        notification_text = (
+            f"🆕 **فایل جدید دریافت شد**\n\n"
+            f"📄 فایل: {file_info['file_name']}\n"
+            f"👤 مشتری: {file_info['customer_code']}\n"
+            f"🕐 ددتایم ادیت: {edit_deadline_str}\n"
+            f"📝 توضیحات: {file_info['description'] or 'ندارد'}"
+        )
+
+        for editor_id in EDITORS_IDS:
+            try:
+                await context.bot.send_message(
+                    chat_id=editor_id,
+                    text=notification_text,
+                    parse_mode="Markdown"
+                )
+            except Exception as e:
+                logger.error(f"خطا در ارسال اعلان به ادیتور {editor_id}: {e}")
+    except Exception as e:
+        logger.error(f"خطا کلی در اعلان ادیتورها: {e}")
+# Helper functions
+def is_allowed_file(filename: str) -> bool:
+    """Check if file format is allowed."""
+    if not filename:
+        return False
+    file_ext = os.path.splitext(filename.lower())[1]
+    return file_ext in ALLOWED_FORMATS
+
+
+def get_persian_datetime() -> str:
+    """Get current Persian datetime string."""
+    return jdatetime.datetime.now().strftime('%Y/%m/%d - %H:%M:%S')
+
+
+def convert_to_iran_time(dt: datetime) -> datetime:
+    """تبدیل datetime به timezone ایران"""
+    if dt.tzinfo is None:
+        # اگر timezone نداشته باشد، UTC فرض می‌کنیم (که معمولاً message.date از تلگرام UTC هست)
+        dt_utc = dt.replace(tzinfo=timezone.utc)
+    else:
+        dt_utc = dt.astimezone(timezone.utc)
+
+    # تبدیل به timezone ایران
+    return dt_utc.astimezone(IRAN_TZ)
+
+
+def calculate_delivery_datetime_j() -> jdatetime.datetime:
+    """
+    محاسبه زمان تحویل با استفاده از سیستم زمان‌بندی جدید
+    """
+    try:
+        # دریافت زمان فعلی در timezone ایران
+        now_iran = datetime.now(IRAN_TZ)
+
+        # تبدیل به زمان بدون timezone برای تابع calculate_delivery_time
+        now_naive = now_iran.replace(tzinfo=None)
+
+        # استفاده از تابع محاسبه زمان تحویل از delivery_scheduler
+        delivery_datetime_gregorian = calculate_delivery_time(now_naive)
+
+        # تبدیل به تاریخ شمسی برای نمایش
+        delivery_datetime_jalali = jdatetime.datetime.fromtimestamp(
+            delivery_datetime_gregorian.timestamp()
+        )
+
+        return delivery_datetime_jalali
+
+    except Exception as e:
+        logger.error(f"Error calculating delivery time: {e}")
+        # در صورت خطا، بازگشت به منطق قدیمی با timezone ایران
+        now_iran = datetime.now(IRAN_TZ)
+        now_j = jdatetime.datetime.fromtimestamp(now_iran.timestamp())
+
+        if now_j.hour >= 18:
+            delivery_day = now_j + jdatetime.timedelta(days=2)
+        else:
+            delivery_day = now_j + jdatetime.timedelta(days=1)
+
+        return delivery_day.replace(hour=13, minute=0, second=0, microsecond=0)
+
+
+def format_delivery_datetime(dt_obj: jdatetime.datetime) -> str:
+    """
+    Formats a jdatetime.datetime object into a readable string for display.
+    """
+    return dt_obj.strftime('%Y/%m/%d - %H:%M')
+
+
+# جایگزین کردن تابع handle_file در file_submission.py:
+
+async def handle_file(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Handles file uploads (documents), saving initial order to DB."""
+    message = update.message
+    user_id = message.from_user.id
+    username = message.from_user.username
+    file_obj = message.document
+
+    with database.connection.SessionLocal() as db:
+        db_user = database.crud.get_user(db, user_id)
+        if not db_user:
+            await update.message.reply_text(
+                "شما هنوز ثبت‌نام نکرده‌اید. لطفاً ثبت‌نام کنید.",
+                reply_markup=get_customer_kb(user_id)
+            )
+            return
+
+    if not file_obj:
+        await message.reply_text("❌ لطفاً یک فایل معتبر ارسال کنید.")
+        return
+
+    file_name = file_obj.file_name
+    file_size = file_obj.file_size
+
+    if not is_allowed_file(file_name):
+        await message.reply_text(
+            f"❌ فرمت فایل مجاز نیست!\n\n"
+            f"فرمت‌های مجاز: {', '.join(ALLOWED_FORMATS)}"
+        )
+        return
+
+    edit_deadline = None
+    delivery_time = None
+
+    try:
+        edit_deadline, delivery_time = calculate_file_times()
+        logger.info(f"محاسبه زمان‌ها موفق: ادیت={edit_deadline}, تحویل={delivery_time}")
+    except Exception as e:
+        logger.error(f"خطا در محاسبه زمان: {e}")
+        now = datetime.now()
+        delivery_time = now + timedelta(days=1, hours=13)
+        edit_deadline = now + timedelta(days=1, hours=19)
+
+    if edit_deadline is None or delivery_time is None:
+        now = datetime.now()
+        delivery_time = now + timedelta(days=1, hours=13)
+        edit_deadline = now + timedelta(days=1, hours=19)
+
+    message_datetime = convert_to_iran_time(message.date)
+
+    order_data = schemas.FileOrderCreate(
+        user_id=user_id,
+        username=username,
+        file_id=file_obj.file_id,
+        file_name=file_name,
+        file_size=file_size,
+        message_id=message.message_id,
+        delivery_datetime=delivery_time,
+        edit_deadline=edit_deadline,
+        print_count=1,
+        created_at=message_datetime
+    )
+
+    db_order = None
+    try:
+        with database.connection.SessionLocal() as db:
+            db_order = database.crud.create_file_order(db, order_data)
+            context.user_data[f'order_user_msg_{message.message_id}'] = db_order.id
+        logger.info(f"فایل در دیتابیس ذخیره شد: {db_order.id}")
+    except Exception as e:
+        logger.error(f"خطا در ذخیره دیتابیس: {e}")
+        await message.reply_text("❌ خطا در ذخیره اطلاعات. لطفاً مجدداً تلاش کنید.")
+        return
+
+    try:
+        edit_deadline_j = jdatetime.datetime.fromtimestamp(edit_deadline.timestamp())
+        delivery_time_j = jdatetime.datetime.fromtimestamp(delivery_time.timestamp())
+    except Exception as e:
+        logger.error(f"خطا در تبدیل تاریخ شمسی: {e}")
+        edit_deadline_j = edit_deadline
+        delivery_time_j = delivery_time
+
+    # محاسبه زمان باقی‌مانده برای ویرایش
+    with database.connection.SessionLocal() as db:
+        delay_minutes = int(database.crud.get_system_setting(db, "editor_access_delay_minutes", "1"))
+
+    caption = (
+        f"📄 فایل شما دریافت شد!\n\n"
+        f"⏱ زمان ویرایش: **{delay_minutes} دقیقه**\n"
+        f"🚚 زمان تحویل: {delivery_time_j.strftime('%m/%d-%H:%M')}\n"
+        f"📝 توضیحات: فاقد توضیحات\n\n"
+        f"⚠️ شما {delay_minutes} دقیقه فرصت دارید تعداد را تغییر دهید یا سفارش را لغو کنید.\n"
+        f"✏️ برای افزودن توضیحات، روی این پیام ریپلای کنید."
+    )
+
+    try:
+        sent_message = await message.reply_document(
+            document=file_obj.file_id,
+            caption=caption,
+            reply_markup=create_initial_keyboard(1)
+        )
+
+        with database.connection.SessionLocal() as db:
+            updated_order = database.crud.update_file_order(
+                db, db_order.id, message_id=sent_message.message_id
+            )
+            context.user_data[f'order_bot_msg_{sent_message.message_id}'] = updated_order.id
+
+            if f'order_user_msg_{message.message_id}' in context.user_data:
+                del context.user_data[f'order_user_msg_{message.message_id}']
+
+        logger.info(f"فایل با موفقیت ارسال شد: {sent_message.message_id}")
+
+        # نوتیفیکیشن به ادیتورها - با تاخیر یا فوری
+        try:
+            with database.connection.SessionLocal() as db:
+                delay_minutes = int(database.crud.get_system_setting(db, "editor_access_delay_minutes", "0"))
+
+                if delay_minutes == 0:
+                    # حالت تست - نوتیفیکیشن فوری
+                    from handlers.editor import EDITORS_IDS
+
+                    notification_text = (
+                        f"🆕 **فایل جدید دریافت شد**\n\n"
+                        f"📄 فایل: {file_name}\n"
+                        f"👤 مشتری: {db_user.customer_code}\n"
+                        f"🕐 ددتایم ادیت: {edit_deadline_j.strftime('%m/%d-%H:%M')}\n"
+                        f"📝 توضیحات: ندارد\n\n"
+                        f"⚡ حالت تست فعال - فایل فوری قابل دسترس است"
+                    )
+
+                    for editor_id in EDITORS_IDS:
+                        try:
+                            await context.bot.send_message(
+                                chat_id=editor_id,
+                                text=notification_text,
+                                parse_mode="Markdown"
+                            )
+                        except Exception as e:
+                            logger.error(f"خطا در اعلان فوری به ادیتور {editor_id}: {e}")
+
+                    logger.info("اعلان فوری به ادیتورها ارسال شد (حالت تست)")
+                else:
+                    # Schedule نوتیفیکیشن تاخیری با asyncio
+                    from utils.notification_scheduler import schedule_editor_notification
+
+                    job_data = {
+                        'file_name': file_name,
+                        'customer_code': db_user.customer_code,
+                        'edit_deadline_display': edit_deadline_j.strftime('%m/%d-%H:%M'),
+                        'description': None
+                    }
+
+                    # محاسبه delay به ثانیه
+                    delay_seconds = delay_minutes * 60
+
+                    # اجرای task در background
+                    asyncio.create_task(
+                        schedule_editor_notification(context.bot, delay_seconds, job_data)
+                    )
+
+                    logger.info(f"✅ نوتیفیکیشن برای {delay_minutes} دقیقه ({delay_seconds} ثانیه) بعد schedule شد")
+
+        except Exception as e:
+            logger.error(f"خطا در schedule نوتیفیکیشن: {e}")
+
+    except Exception as e:
+        logger.error(f"خطا در ارسال فایل: {e}")
+        await message.reply_text("❌ خطا در ارسال فایل.")
+
+
+# در handlers/file_submission.py - تابع handle_reply
+
+async def handle_reply(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Handles reply messages for adding descriptions and updates the DB."""
+    message = update.message
+
+    if not message.reply_to_message:
+        return
+
+    reply_to = message.reply_to_message
+
+    if (reply_to.from_user.id != context.bot.id or
+            not reply_to.document or
+            not reply_to.reply_markup):
+        return
+
+    user_id = message.from_user.id
+    description = message.text
+
+    order_id = context.user_data.get(f'order_bot_msg_{reply_to.message_id}')
+
+    if not order_id:
+        await message.reply_text("❌ سفارش مورد نظر یافت نشد یا منقضی شده است.")
+        return
+
+    try:
+        with database.connection.SessionLocal() as db:
+            db_order = database.crud.get_file_order_by_id(db, order_id)
+
+            if not db_order or db_order.user_id != user_id:
+                await message.reply_text("❌ سفارش مورد نظر یافت نشد.")
+                return
+
+            # چک کردن deadline ویرایش
+            if db_order.edit_deadline:
+                try:
+                    now_utc = datetime.now(timezone.utc)
+
+                    if db_order.edit_deadline.tzinfo is None:
+                        deadline_utc = db_order.edit_deadline.replace(tzinfo=timezone.utc)
+                    else:
+                        deadline_utc = db_order.edit_deadline.astimezone(timezone.utc)
+
+                    logger.info(f"Check deadline for reply: now={now_utc}, deadline={deadline_utc}")
+
+                    if now_utc > deadline_utc:
+                        time_passed = now_utc - deadline_utc
+                        minutes_passed = int(time_passed.total_seconds() / 60)
+
+                        await message.reply_text(
+                            f"⏰ **زمان ویرایش به پایان رسید**\n\n"
+                            f"متأسفانه فایل شما وارد مرحله پردازش شده و دیگه امکان تغییر توضیحات نیست\n\n"
+                            f"📊 مدت زمان سپری شده: {minutes_passed} دقیقه\n\n"
+                            f"💡 اگه نیاز به تغییری داری، با پشتیبانی تماس بگیر"
+                        )
+                        return
+                except Exception as e:
+                    logger.error(f"خطا در چک deadline: {e}")
+                    import traceback
+                    logger.error(traceback.format_exc())
+
+            database.crud.update_file_order(db, order_id, description=description)
+
+            delivery_dt_gregorian_from_db = db_order.delivery_datetime
+            delivery_dt_j_for_display = jdatetime.datetime.fromtimestamp(
+                delivery_dt_gregorian_from_db.timestamp()) if delivery_dt_gregorian_from_db else None
+
+            caption_delivery_time = format_delivery_datetime(
+                delivery_dt_j_for_display) if delivery_dt_j_for_display else "نامشخص"
+
+            new_caption = (
+                f"🕐 زمان تحویل: {caption_delivery_time}\n"
+                f"📝 توضیحات: {description}\n\n"
+                f"✏️ برای تغییر توضیحات، مجدداً ریپلای کنید."
+            )
+
+            await reply_to.edit_caption(
+                caption=new_caption,
+                reply_markup=create_initial_keyboard(db_order.print_count)
+            )
+
+            await message.reply_text("✅ توضیحات با موفقیت به‌روزرسانی شد.")
+
+    except Exception as e:
+        logger.error(f"Error updating description: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
+        await message.reply_text("❌ خطا در به‌روزرسانی توضیحات.")
+
+
+
+
+
+# در handlers/file_submission.py - تابع handle_callback_query
+
+# در handlers/file_submission.py
+
+# این تابع کامل را در file_submission.py جایگزین handle_callback_query کنید
+# (خطوط 399 تا 542)
+
+# ===== file_submission.py =====
+# تابع handle_callback_query را با این جایگزین کنید:
+
+async def handle_callback_query(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Handles inline keyboard callbacks and updates the DB."""
+    query = update.callback_query
+    await query.answer()
+
+    user_id = query.from_user.id
+    message = query.message
+    data = query.data
+
+    order_id = context.user_data.get(f'order_bot_msg_{message.message_id}')
+
+    if not order_id:
+        await query.edit_message_reply_markup(reply_markup=None)
+        await query.message.reply_text("❌ سفارش منقضی شده است. لطفاً فایل را مجدداً ارسال کنید.")
+        return
+
+    try:
+        with database.connection.SessionLocal() as db:
+            db_order = database.crud.get_file_order_by_id(db, order_id)
+
+            if not db_order or db_order.user_id != user_id:
+                await query.edit_message_reply_markup(reply_markup=None)
+                await query.message.reply_text("❌ سفارش یافت نشد.")
+                return
+
+            # چک کردن deadline ویرایش
+            if db_order.edit_deadline:
+                try:
+                    from datetime import timezone, timedelta
+                    IRAN_TZ = timezone(timedelta(hours=3, minutes=30))
+
+                    # زمان فعلی ایران
+                    now_iran = datetime.now(IRAN_TZ)
+
+                    # deadline در DB به صورت naive (بدون timezone) ذخیره شده
+                    # ولی مقدارش زمان ایران است، پس فقط برای مقایسه naive می‌کنیم
+                    now_naive = now_iran.replace(tzinfo=None)
+                    deadline_naive = db_order.edit_deadline  # این هم naive و ایران است
+
+                    logger.info(f"🔍 چک deadline برای سفارش {order_id}:")
+                    logger.info(f"  - فایل: {db_order.file_name}")
+                    logger.info(f"  - زمان فعلی (ایران، naive): {now_naive}")
+                    logger.info(f"  - Edit Deadline (naive): {deadline_naive}")
+
+                    time_diff_seconds = (deadline_naive - now_naive).total_seconds()
+                    time_diff_minutes = time_diff_seconds / 60
+                    logger.info(f"  - تفاوت: {time_diff_minutes:.2f} دقیقه ({time_diff_seconds:.0f} ثانیه)")
+
+                    if now_naive > deadline_naive:
+                        minutes_passed = int((now_naive - deadline_naive).total_seconds() / 60)
+                        logger.info(f"🔒 زمان ویرایش سپری شده - {minutes_passed} دقیقه پیش")
+
+                        await query.answer("⏰ زمان ویرایش سفارش به پایان رسیده است!", show_alert=True)
+
+                        # حذف کیبورد از پیام
+                        try:
+                            await query.edit_message_reply_markup(reply_markup=None)
+                        except Exception as e:
+                            logger.warning(f"نتوانست کیبورد را حذف کند: {e}")
+
+                        await query.message.reply_text(
+                            f"⏰ **زمان ویرایش به پایان رسید**\n\n"
+                            f"فایل شما وارد مرحله پردازش شده و امکان تغییر وجود ندارد.\n\n"
+                            f"📊 مدت سپری شده: {minutes_passed} دقیقه\n\n"
+                            f"💡 اگر نیاز به تغییری دارید، با پشتیبانی تماس بگیرید.",
+                            parse_mode="Markdown"
+                        )
+                        return
+                    else:
+                        logger.info(f"✅ هنوز قابل ویرایش است - {abs(time_diff_minutes):.2f} دقیقه مانده")
+
+                except Exception as e:
+                    logger.error(f"❌ خطا در چک deadline: {e}")
+                    import traceback
+                    logger.error(traceback.format_exc())
+            else:
+                logger.warning(f"⚠️ سفارش {order_id} edit_deadline ندارد!")
+
+            temp_count_key = f'temp_print_count_{message.message_id}'
+
+            if data == "edit_count":
+                context.user_data[temp_count_key] = db_order.print_count
+                await query.edit_message_reply_markup(reply_markup=create_count_keyboard(db_order.print_count))
+
+            elif data == "decrease_count":
+                current_temp_count = context.user_data.get(temp_count_key, db_order.print_count)
+                if current_temp_count > 1:
+                    context.user_data[temp_count_key] = current_temp_count - 1
+                    await query.edit_message_reply_markup(
+                        reply_markup=create_count_keyboard(context.user_data[temp_count_key]))
+
+            elif data == "increase_count":
+                current_temp_count = context.user_data.get(temp_count_key, db_order.print_count)
+                context.user_data[temp_count_key] = current_temp_count + 1
+                await query.edit_message_reply_markup(
+                    reply_markup=create_count_keyboard(context.user_data[temp_count_key]))
+
+            elif data == "show_count":
+                pass
+
+            elif data == "confirm_count":
+                if temp_count_key in context.user_data:
+                    new_count = context.user_data[temp_count_key]
+                    database.crud.update_file_order(db, order_id, print_count=new_count)
+                    del context.user_data[temp_count_key]
+                    db_order.print_count = new_count
+
+                delivery_dt_gregorian_from_db = db_order.delivery_datetime
+                delivery_dt_j_for_display = jdatetime.datetime.fromtimestamp(
+                    delivery_dt_gregorian_from_db.timestamp()) if delivery_dt_gregorian_from_db else "نامشخص"
+                caption_delivery_time = format_delivery_datetime(
+                    delivery_dt_j_for_display) if delivery_dt_j_for_display else "نامشخص"
+                description_text = db_order.description or "فاقد توضیحات"
+                new_caption = (
+                    f"🕐 زمان تحویل: {caption_delivery_time}\n"
+                    f"📝 توضیحات: {description_text}\n\n"
+                    f"✏️ برای تغییر توضیحات، مجدداً ریپلای کنید."
+                )
+                await query.edit_message_caption(caption=new_caption,
+                                                 reply_markup=create_initial_keyboard(db_order.print_count))
+
+            elif data == "cancel_count_edit":
+                if temp_count_key in context.user_data:
+                    del context.user_data[temp_count_key]
+                await query.edit_message_reply_markup(reply_markup=create_initial_keyboard(db_order.print_count))
+
+            elif data == "cancel_order":
+                await query.edit_message_reply_markup(reply_markup=create_final_cancel_keyboard())
+
+            elif data == "confirm_delete":
+                database.crud.update_file_order(db, order_id, status="cancelled")
+                await query.delete_message()
+                await context.bot.send_message(chat_id=user_id, text="❌ فایل و سفارش حذف شد.")
+                if f'order_bot_msg_{message.message_id}' in context.user_data:
+                    del context.user_data[f'order_bot_msg_{message.message_id}']
+                if temp_count_key in context.user_data:
+                    del context.user_data[temp_count_key]
+
+            elif data == "back_to_initial":
+                await query.edit_message_reply_markup(reply_markup=create_initial_keyboard(db_order.print_count))
+
+    except Exception as e:
+        logger.error(f"Callback processing error: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
+        await query.message.reply_text("❌ خطا در پردازش درخواست.")
+
+async def get_description(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """این تابع دیگر استفاده نمی‌شود - handle_reply جایگزین آن شده است."""
+    pass
+
+
+async def cancel_file_submission(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """هندلر برای لغو فرآیند ارسال فایل."""
+    await update.message.reply_text("عملیات ارسال فایل لغو شد.",
+                                    reply_markup=get_customer_kb(update.effective_user.id))
+    return
+
+
+# در handlers/file_submission.py - اضافه کن:
+
+async def send_delayed_editor_notification(context: ContextTypes.DEFAULT_TYPE):
+    """ارسال نوتیفیکیشن تاخیری به ادیتورها"""
+    job_data = context.job.data
+
+    try:
+        from handlers.editor import EDITORS_IDS
+
+        notification_text = (
+            f"🆕 **فایل جدید قابل دسترس**\n\n"
+            f"📄 فایل: {job_data['file_name']}\n"
+            f"👤 مشتری: {job_data['customer_code']}\n"
+            f"🕐 ددتایم ادیت: {job_data['edit_deadline_display']}\n"
+            f"📝 توضیحات: {job_data['description'] or 'ندارد'}\n\n"
+            f"💡 فایل اکنون آماده دریافت است."
+        )
+
+        for editor_id in EDITORS_IDS:
+            try:
+                await context.bot.send_message(
+                    chat_id=editor_id,
+                    text=notification_text,
+                    parse_mode="Markdown"
+                )
+                logger.info(f"نوتیفیکیشن تاخیری به ادیتور {editor_id} ارسال شد")
+            except Exception as e:
+                logger.error(f"خطا در ارسال نوتیفیکیشن به ادیتور {editor_id}: {e}")
+
+    except Exception as e:
+        logger.error(f"خطا در ارسال نوتیفیکیشن تاخیری: {e}")
