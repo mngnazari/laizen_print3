@@ -4,10 +4,7 @@ from collections import defaultdict
 from datetime import datetime
 from typing import List, Dict
 import database.models
-
-# در utils/delivery_grouping.py اصلاح کنید:
-
-import jdatetime
+from utils.timezone_utils import format_shamsi
 
 
 def group_files_by_delivery_time(files: List[database.models.FileOrder]) -> Dict[str, List[database.models.FileOrder]]:
@@ -16,9 +13,8 @@ def group_files_by_delivery_time(files: List[database.models.FileOrder]) -> Dict
 
     for file_order in files:
         if file_order.delivery_datetime:
-            # تبدیل به تاریخ شمسی
-            jd = jdatetime.datetime.fromgregorian(datetime=file_order.delivery_datetime)
-            delivery_key = jd.strftime("%Y/%m/%d %H:%M")
+            # استفاده از تابع مرکزی برای فرمت تاریخ شمسی
+            delivery_key = format_shamsi(file_order.delivery_datetime, include_time=True)
             grouped[delivery_key].append(file_order)
 
     return dict(grouped)
@@ -59,25 +55,21 @@ def count_total_pending_files() -> int:
         ).count()
 
 
-# در utils/delivery_grouping.py اصلاح کنید:
-
 def count_ready_files_by_delivery() -> Dict[str, int]:
     """شمارش فایل‌های pending بر اساس زمان تحویل"""
     import database.connection
-    import jdatetime
 
     with database.connection.SessionLocal() as db:
         ready_files = db.query(database.models.FileOrder).filter(
             database.models.FileOrder.status == "pending"
-            # حذف شرط sent_to_operator
         ).options(database.crud.joinedload(database.models.FileOrder.user)).all()
 
         grouped = defaultdict(int)
 
         for file_order in ready_files:
             if file_order.delivery_datetime:
-                jd = jdatetime.datetime.fromgregorian(datetime=file_order.delivery_datetime)
-                delivery_key = jd.strftime("%Y/%m/%d %H:%M")
+                # استفاده از تابع مرکزی برای فرمت تاریخ شمسی
+                delivery_key = format_shamsi(file_order.delivery_datetime, include_time=True)
                 grouped[delivery_key] += 1
 
         return dict(grouped)

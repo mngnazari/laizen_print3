@@ -1,8 +1,7 @@
-# handlers/file_submission.py - نسخه با timezone ایران
+# handlers/file_submission.py
 import logging
 import os
-from datetime import datetime, timezone, timedelta
-import jdatetime
+from datetime import datetime, timedelta
 from telegram import Update, InlineKeyboardMarkup, InlineKeyboardButton
 from telegram.ext import ContextTypes
 import asyncio
@@ -11,22 +10,16 @@ import database.connection
 from database import schemas
 from keyboards.file_keyboards import create_initial_keyboard, create_count_keyboard, create_final_cancel_keyboard
 from keyboards.customer import get_customer_kb
-# اضافه کردن import برای سیستم تحویل جدید
-from .delivery_scheduler import calculate_delivery_time
+from .delivery_scheduler import calculate_delivery_time, calculate_file_times
 from .holiday_manager import is_holiday, get_next_working_day
-# در بالای فایل file_submission.py اضافه کنید:
-from handlers.delivery_scheduler import calculate_file_times
+from utils.timezone_utils import now_utc, format_shamsi_short
 
-# و اینها را هم اضافه کنید اگر نیست:
 DEFAULT_PRINT_COUNT = 1
 
 logger = logging.getLogger(__name__)
 
 ADMIN_ID = 2138687434
 ALLOWED_FORMATS = {'.stl', '.zip', '.rar', '.3dm'}
-
-# تعریف timezone ایران
-IRAN_TZ = timezone(timedelta(hours=3, minutes=30))
 
 
 # در file_submission.py، تابع اعلان به ادیتورها را اضافه کنید:
@@ -36,9 +29,8 @@ async def notify_editors_new_file(context, file_info):
     try:
         from handlers.editor import EDITORS_IDS
 
-        # تبدیل به تاریخ شمسی
-        edit_deadline_j = jdatetime.datetime.fromtimestamp(file_info['edit_deadline'].timestamp())
-        edit_deadline_str = edit_deadline_j.strftime('%m/%d-%H:%M')
+        # استفاده از تابع مرکزی برای فرمت تاریخ شمسی
+        edit_deadline_str = format_shamsi_short(file_info['edit_deadline'])
 
         notification_text = (
             f"🆕 **فایل جدید دریافت شد**\n\n"
@@ -69,62 +61,9 @@ def is_allowed_file(filename: str) -> bool:
 
 
 def get_persian_datetime() -> str:
-    """Get current Persian datetime string."""
-    return jdatetime.datetime.now().strftime('%Y/%m/%d - %H:%M:%S')
-
-
-def convert_to_iran_time(dt: datetime) -> datetime:
-    """تبدیل datetime به timezone ایران"""
-    if dt.tzinfo is None:
-        # اگر timezone نداشته باشد، UTC فرض می‌کنیم (که معمولاً message.date از تلگرام UTC هست)
-        dt_utc = dt.replace(tzinfo=timezone.utc)
-    else:
-        dt_utc = dt.astimezone(timezone.utc)
-
-    # تبدیل به timezone ایران
-    return dt_utc.astimezone(IRAN_TZ)
-
-
-def calculate_delivery_datetime_j() -> jdatetime.datetime:
-    """
-    محاسبه زمان تحویل با استفاده از سیستم زمان‌بندی جدید
-    """
-    try:
-        # دریافت زمان فعلی در timezone ایران
-        now_iran = datetime.now(IRAN_TZ)
-
-        # تبدیل به زمان بدون timezone برای تابع calculate_delivery_time
-        now_naive = now_iran.replace(tzinfo=None)
-
-        # استفاده از تابع محاسبه زمان تحویل از delivery_scheduler
-        delivery_datetime_gregorian = calculate_delivery_time(now_naive)
-
-        # تبدیل به تاریخ شمسی برای نمایش
-        delivery_datetime_jalali = jdatetime.datetime.fromtimestamp(
-            delivery_datetime_gregorian.timestamp()
-        )
-
-        return delivery_datetime_jalali
-
-    except Exception as e:
-        logger.error(f"Error calculating delivery time: {e}")
-        # در صورت خطا، بازگشت به منطق قدیمی با timezone ایران
-        now_iran = datetime.now(IRAN_TZ)
-        now_j = jdatetime.datetime.fromtimestamp(now_iran.timestamp())
-
-        if now_j.hour >= 18:
-            delivery_day = now_j + jdatetime.timedelta(days=2)
-        else:
-            delivery_day = now_j + jdatetime.timedelta(days=1)
-
-        return delivery_day.replace(hour=13, minute=0, second=0, microsecond=0)
-
-
-def format_delivery_datetime(dt_obj: jdatetime.datetime) -> str:
-    """
-    Formats a jdatetime.datetime object into a readable string for display.
-    """
-    return dt_obj.strftime('%Y/%m/%d - %H:%M')
+    """Get current Persian datetime string (deprecated - استفاده از timezone_utils)"""
+    from utils.timezone_utils import format_shamsi, now_iran
+    return format_shamsi(now_iran(), include_time=True)
 
 
 # جایگزین کردن تابع handle_file در file_submission.py:
@@ -172,11 +111,12 @@ async def handle_file(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         edit_deadline = now + timedelta(days=1, hours=19)
 
     if edit_deadline is None or delivery_time is None:
-        now = datetime.now()
+        now = now_utc()
         delivery_time = now + timedelta(days=1, hours=13)
         edit_deadline = now + timedelta(days=1, hours=19)
 
-    message_datetime = convert_to_iran_time(message.date)
+    # message.date از تلگرام UTC است - تبدیل به UTC naive
+    message_datetime = message.date.replace(tzinfo=None) if message.date.tzinfo else message.date
 
     order_data = schemas.FileOrderCreate(
         user_id=user_id,

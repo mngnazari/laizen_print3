@@ -13,9 +13,9 @@ from keyboards.editor import (
 )
 from utils.editor_state_manager import EditorStateManager
 from datetime import datetime, timedelta
-import jdatetime
 import logging
 from sqlalchemy.orm import joinedload
+from utils.timezone_utils import format_shamsi_short
 
 # تنظیم لاگر
 logging.basicConfig(level=logging.INFO)
@@ -28,14 +28,13 @@ def get_shamsi_time_display(file_order):
     """تبدیل زمان به فرمت شمسی برای نمایش"""
     try:
         if file_order.edit_deadline:
-            time_obj = file_order.edit_deadline
+            return format_shamsi_short(file_order.edit_deadline)
         elif file_order.delivery_datetime:
+            # محاسبه 18 ساعت قبل از تحویل
             time_obj = file_order.delivery_datetime - timedelta(hours=18)
+            return format_shamsi_short(time_obj)
         else:
             return "نامشخص"
-
-        shamsi_time = jdatetime.datetime.fromtimestamp(time_obj.timestamp())
-        return shamsi_time.strftime('%m/%d-%H:%M')
     except Exception as e:
         logger.error(f"خطا در تبدیل تاریخ: {e}")
         return "نامشخص"

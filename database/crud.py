@@ -1,5 +1,5 @@
 from collections import defaultdict
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 from typing import List, Dict, Optional
 
 from sqlalchemy import and_, desc
@@ -13,10 +13,9 @@ from telegram import Update
 from telegram.ext import ContextTypes
 import logging
 from .models import Vault, VaultTransaction
+from utils.timezone_utils import now_utc
 
 logger = logging.getLogger(__name__)
-
-IRAN_TZ = timezone(timedelta(hours=3, minutes=30))
 
 def get_user(db: Session, user_id: int) -> Optional[User]:
     """دریافت کاربر بر اساس شناسه."""

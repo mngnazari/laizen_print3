@@ -1,7 +1,8 @@
 # utils/notification_scheduler.py
 import asyncio
-from datetime import datetime, timezone, timedelta
+from datetime import datetime
 import logging
+from utils.timezone_utils import format_shamsi_short
 
 logger = logging.getLogger(__name__)
 

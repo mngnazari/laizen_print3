@@ -1,13 +1,14 @@
 # database/editor_crud.py
 from sqlalchemy.orm import Session, joinedload
 from typing import List, Optional, Dict
-from datetime import datetime
+from datetime import datetime, timedelta
 import logging
 import unicodedata
 
 from .editor_models import EditorWorkSession, EditorOriginalFile, EditorFileMapping, ProcessedFile
 from .models import FileOrder, User
-from datetime import datetime, timedelta, timezone
+from utils.timezone_utils import now_utc
+
 logger = logging.getLogger(__name__)
 
 

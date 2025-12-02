@@ -7,6 +7,7 @@ from database.models import DeliverySchedule
 from datetime import datetime, timedelta
 import logging
 from .holiday_manager import is_holiday, get_next_working_day
+from utils.timezone_utils import now_utc, now_iran
 
 logger = logging.getLogger(__name__)
 
@@ -27,10 +28,13 @@ DEFAULT_EDIT_DEADLINE_OFFSET_HOURS = 2  # 2 ساعت بعد از زمان مرج
 # تابع calculate_file_times را با این جایگزین کنید:
 
 def calculate_file_times():
-    """محاسبه edit_deadline و delivery_time با توجه به تنظیمات"""
+    """
+    محاسبه edit_deadline و delivery_time با توجه به تنظیمات
+
+    همه زمان‌ها به UTC ذخیره می‌شوند
+    """
     from database.connection import SessionLocal
     from database.crud import get_system_setting
-    from datetime import timezone, timedelta
 
     logger.info("🔧 شروع محاسبه زمان‌های فایل...")
 
@@ -39,26 +43,21 @@ def calculate_file_times():
 
     logger.info(f"⚙️ تاخیر از تنظیمات: {delay_minutes} دقیقه")
 
-    # تعریف timezone ایران (UTC+3:30)
-    IRAN_TZ = timezone(timedelta(hours=3, minutes=30))
-
-    # محاسبه با timezone ایران
-    now_iran = datetime.now(IRAN_TZ)
-    logger.info(f"🕐 زمان فعلی (ایران): {now_iran}")
+    # دریافت زمان فعلی UTC
+    now = now_utc()
+    logger.info(f"🕐 زمان فعلی (UTC): {now}")
 
     # محاسبه delivery_time
-    delivery_time = calculate_delivery_time(now_iran)
+    delivery_time = calculate_delivery_time(now)
 
-    # محاسبه edit_deadline - نگه داشتن به صورت naive (بدون timezone) ولی با مقدار ایران
-    edit_deadline_iran = now_iran + timedelta(minutes=delay_minutes)
-    # فقط حذف tzinfo برای ذخیره در SQLite - مقدار همچنان زمان ایران است
-    edit_deadline = edit_deadline_iran.replace(tzinfo=None)
+    # محاسبه edit_deadline
+    edit_deadline = now + timedelta(minutes=delay_minutes)
 
     logger.info(f"📊 نتایج محاسبه:")
-    logger.info(f"  - زمان فعلی (ایران): {now_iran}")
+    logger.info(f"  - زمان فعلی (UTC): {now}")
     logger.info(f"  - تاخیر: {delay_minutes} دقیقه")
-    logger.info(f"  - Edit Deadline: {edit_deadline}")
-    logger.info(f"  - Delivery Time: {delivery_time}")
+    logger.info(f"  - Edit Deadline (UTC): {edit_deadline}")
+    logger.info(f"  - Delivery Time (UTC): {delivery_time}")
 
     return edit_deadline, delivery_time
 async def start_delivery_setup(update: Update, context: ContextTypes.DEFAULT_TYPE):

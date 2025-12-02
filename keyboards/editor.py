@@ -4,26 +4,18 @@ from typing import Dict, List
 import database.models
 import database.connection
 from utils.delivery_grouping import group_files_by_delivery_time
-import jdatetime
 import logging
 from sqlalchemy.orm import joinedload
 from datetime import datetime, timedelta
-from datetime import datetime, timedelta, timezone
+from utils.timezone_utils import format_shamsi
 
 def get_edit_deadline_or_calculate(file_order):
-    """دریافت edit_deadline - بدون timezone"""
+    """دریافت edit_deadline (همه datetime‌ها naive UTC هستند)"""
     if file_order.edit_deadline:
-        # اگه timezone داره، حذفش کن
-        if hasattr(file_order.edit_deadline, 'tzinfo') and file_order.edit_deadline.tzinfo:
-            return file_order.edit_deadline.replace(tzinfo=None)
         return file_order.edit_deadline
     elif file_order.delivery_datetime:
-        # اگه timezone داره، حذفش کن
-        if hasattr(file_order.delivery_datetime, 'tzinfo') and file_order.delivery_datetime.tzinfo:
-            delivery = file_order.delivery_datetime.replace(tzinfo=None)
-        else:
-            delivery = file_order.delivery_datetime
-        return delivery - timedelta(hours=18)
+        # محاسبه 18 ساعت قبل از تحویل
+        return file_order.delivery_datetime - timedelta(hours=18)
     return None
 # تنظیم لاگر
 logging.basicConfig(level=logging.INFO)
