@@ -257,15 +257,16 @@ def create_file_order(db: Session, file_order: schemas.FileOrderCreate) -> FileO
             'description': file_order.description,
             'message_id': file_order.message_id,
             'delivery_datetime': file_order.delivery_datetime,
-            'edit_deadline': file_order.edit_deadline  # این خط مهم است
+            'edit_deadline': file_order.edit_deadline
         }
 
+        # اگر created_at داده شده، استفاده کن (باید UTC naive باشه)
         if hasattr(file_order, 'created_at') and file_order.created_at is not None:
-            if file_order.created_at.tzinfo is None:
-                created_at_utc = file_order.created_at.replace(tzinfo=timezone.utc)
+            # حذف tzinfo اگر داشته باشه (فرض: مقدار UTC است)
+            if hasattr(file_order.created_at, 'tzinfo') and file_order.created_at.tzinfo is not None:
+                file_order_data['created_at'] = file_order.created_at.replace(tzinfo=None)
             else:
-                created_at_utc = file_order.created_at.astimezone(timezone.utc)
-            file_order_data['created_at'] = created_at_utc.astimezone(IRAN_TZ)
+                file_order_data['created_at'] = file_order.created_at
 
         db_file = FileOrder(**file_order_data)
         db.add(db_file)
