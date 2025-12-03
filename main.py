@@ -912,7 +912,7 @@ def main() -> None:
 
     # Operator message handlers
     application.add_handler(MessageHandler(
-        filters.Regex(r'^📋 منوی اصلی') & filters.User(user_id=OPERATORS_IDS),
+        filters.Regex(r'^(📋|🔙) منوی اصلی') & filters.User(user_id=OPERATORS_IDS),
         handle_operator_menu
     ))
 
