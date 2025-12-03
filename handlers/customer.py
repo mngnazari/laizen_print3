@@ -33,19 +33,19 @@ async def show_customer_main_menu(update: Update, context: ContextTypes.DEFAULT_
             await message.edit_text(
                 text,
                 parse_mode="Markdown",
-                reply_markup=get_customer_inline_menu()
+                reply_markup=get_customer_inline_menu(user_id)
             )
         except:
             await message.reply_text(
                 text,
                 parse_mode="Markdown",
-                reply_markup=get_customer_inline_menu()
+                reply_markup=get_customer_inline_menu(user_id)
             )
     else:
         await message.reply_text(
             text,
             parse_mode="Markdown",
-            reply_markup=get_customer_inline_menu()
+            reply_markup=get_customer_inline_menu(user_id)
         )
 
 
@@ -120,6 +120,54 @@ async def handle_customer_inline_callbacks(update: Update, context: ContextTypes
             print(f"❌ Error in archive: {e}")
             await query.message.reply_text(
                 "📂 آرشیو فایل‌ها\n\nلطفاً از منوی ثابت دکمه 'آرشیو فایل‌ها' را انتخاب کنید.",
+                reply_markup=get_customer_kb(user_id)
+            )
+
+    elif data == "customer_in_progress":
+        # فایل‌های در حال انجام
+        with database.connection.SessionLocal() as db:
+            from utils.timezone_utils import format_shamsi
+
+            in_progress_files = database.crud.get_customer_in_progress_files(db, user_id)
+
+            if not in_progress_files:
+                await query.message.reply_text(
+                    "✅ **فایل‌های در حال انجام**\n\n"
+                    "در حال حاضر هیچ فایلی در حال انجام ندارید.",
+                    parse_mode="Markdown",
+                    reply_markup=get_customer_kb(user_id)
+                )
+                return
+
+            message = f"🔄 **فایل‌های در حال انجام** ({len(in_progress_files)})\n\n"
+            message += "این فایل‌ها زمان ادیت آنها به پایان رسیده و در حال پردازش هستند:\n\n"
+
+            for i, file in enumerate(in_progress_files, 1):
+                message += f"{i}. **فایل:** `{file.file_name}`\n"
+                message += f"   📦 تعداد: {file.print_count}\n"
+
+                if file.delivery_datetime:
+                    delivery_time = format_shamsi(file.delivery_datetime, include_time=True)
+                    message += f"   🕐 زمان تحویل: {delivery_time}\n"
+
+                # نمایش وضعیت
+                if file.editor_status == "assigned":
+                    message += f"   📝 وضعیت: در دست ادیتور\n"
+                elif file.editor_status == "approved":
+                    message += f"   ✅ وضعیت: ادیت شده\n"
+                elif file.editor_status == "pending":
+                    message += f"   ⏳ وضعیت: در صف ادیت\n"
+
+                if file.status == "confirmed":
+                    message += f"   ✓ تایید شده\n"
+
+                message += "\n"
+
+            message += "💡 این فایل‌ها به زودی پرینت و فاکتور خواهند شد."
+
+            await query.message.reply_text(
+                message,
+                parse_mode="Markdown",
                 reply_markup=get_customer_kb(user_id)
             )
 

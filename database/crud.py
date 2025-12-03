@@ -1609,6 +1609,35 @@ def get_visitors_ids(db: Session) -> List[int]:
     visitors = get_staff_by_role(db, "visitor")
     return [v.user_id for v in visitors]
 
+def get_customer_in_progress_files(db: Session, user_id: int) -> List[FileOrder]:
+    """
+    دریافت فایل‌های "در حال انجام" مشتری
+
+    فایل‌های در حال انجام = فایل‌هایی که:
+    1. مشتری ثبت کرده
+    2. زمان ادیت تموم شده (edit_deadline گذشته)
+    3. هنوز فاکتور/پرینت نشده (status != invoiced و cancelled)
+
+    Args:
+        db: Database session
+        user_id: شناسه کاربر مشتری
+
+    Returns:
+        لیست فایل‌های در حال انجام
+    """
+    now = now_utc()
+
+    files = db.query(FileOrder).filter(
+        and_(
+            FileOrder.user_id == user_id,
+            FileOrder.status.in_(["pending", "confirmed"]),  # هنوز فاکتور نشده
+            FileOrder.edit_deadline.isnot(None),  # زمان ادیت تعیین شده
+            FileOrder.edit_deadline < now  # زمان ادیت گذشته
+        )
+    ).order_by(desc(FileOrder.created_at)).all()
+
+    return files
+
 def initialize_default_settings(db: Session):
     """مقداردهی اولیه تنظیمات سیستم"""
     # بررسی و تنظیم مقدار پیش‌فرض تاخیر دسترسی ادیتورها
