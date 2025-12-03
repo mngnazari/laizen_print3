@@ -187,6 +187,9 @@ async def handle_file(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
             with database.connection.SessionLocal() as db:
                 delay_minutes = int(database.crud.get_system_setting(db, "editor_access_delay_minutes", "0"))
 
+                # فرمت deadline برای نمایش
+                edit_deadline_display = format_shamsi_short(edit_deadline)
+
                 if delay_minutes == 0:
                     # حالت تست - نوتیفیکیشن فوری
                     from handlers.editor import EDITORS_IDS
@@ -195,7 +198,7 @@ async def handle_file(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
                         f"🆕 **فایل جدید دریافت شد**\n\n"
                         f"📄 فایل: {file_name}\n"
                         f"👤 مشتری: {db_user.customer_code}\n"
-                        f"🕐 ددتایم ادیت: {edit_deadline_j.strftime('%m/%d-%H:%M')}\n"
+                        f"🕐 ددتایم ادیت: {edit_deadline_display}\n"
                         f"📝 توضیحات: ندارد\n\n"
                         f"⚡ حالت تست فعال - فایل فوری قابل دسترس است"
                     )
@@ -218,7 +221,7 @@ async def handle_file(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
                     job_data = {
                         'file_name': file_name,
                         'customer_code': db_user.customer_code,
-                        'edit_deadline_display': edit_deadline_j.strftime('%m/%d-%H:%M'),
+                        'edit_deadline_display': edit_deadline_display,
                         'description': None
                     }
 
