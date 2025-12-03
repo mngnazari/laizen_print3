@@ -124,9 +124,10 @@ async def handle_customer_inline_callbacks(update: Update, context: ContextTypes
             )
 
     elif data == "customer_in_progress":
-        # فایل‌های در حال انجام
+        # فایل‌های در حال انجام - ارسال فایل‌ها با کیبورد ویرایشی
         with database.connection.SessionLocal() as db:
-            from utils.timezone_utils import format_shamsi
+            from utils.timezone_utils import format_shamsi_short, now_utc
+            from keyboards.file_keyboards import create_initial_keyboard
 
             in_progress_files = database.crud.get_customer_in_progress_files(db, user_id)
 
@@ -139,35 +140,73 @@ async def handle_customer_inline_callbacks(update: Update, context: ContextTypes
                 )
                 return
 
-            message = f"🔄 **فایل‌های در حال انجام** ({len(in_progress_files)})\n\n"
-            message += "این فایل‌ها زمان ادیت آنها به پایان رسیده و در حال پردازش هستند:\n\n"
-
-            for i, file in enumerate(in_progress_files, 1):
-                message += f"{i}. **فایل:** `{file.file_name}`\n"
-                message += f"   📦 تعداد: {file.print_count}\n"
-
-                if file.delivery_datetime:
-                    delivery_time = format_shamsi(file.delivery_datetime, include_time=True)
-                    message += f"   🕐 زمان تحویل: {delivery_time}\n"
-
-                # نمایش وضعیت
-                if file.editor_status == "assigned":
-                    message += f"   📝 وضعیت: در دست ادیتور\n"
-                elif file.editor_status == "approved":
-                    message += f"   ✅ وضعیت: ادیت شده\n"
-                elif file.editor_status == "pending":
-                    message += f"   ⏳ وضعیت: در صف ادیت\n"
-
-                if file.status == "confirmed":
-                    message += f"   ✓ تایید شده\n"
-
-                message += "\n"
-
-            message += "💡 این فایل‌ها به زودی پرینت و فاکتور خواهند شد."
-
+            # ارسال پیام توضیح
             await query.message.reply_text(
-                message,
-                parse_mode="Markdown",
+                f"🔄 **فایل‌های در حال انجام** ({len(in_progress_files)})\n\n"
+                f"در حال ارسال فایل‌ها...",
+                parse_mode="Markdown"
+            )
+
+            # ارسال هر فایل با کیبورد ویرایشی
+            for file_order in in_progress_files:
+                try:
+                    # محاسبه زمان‌ها
+                    with database.connection.SessionLocal() as db_inner:
+                        delay_minutes = int(database.crud.get_system_setting(db_inner, "editor_access_delay_minutes", "1"))
+
+                    # فرمت زمان‌ها
+                    delivery_time_display = format_shamsi_short(file_order.delivery_datetime) if file_order.delivery_datetime else "نامشخص"
+
+                    # توضیحات
+                    description_text = file_order.description if file_order.description else "فاقد توضیحات"
+
+                    # بررسی وضعیت ویرایش
+                    now = now_utc()
+                    can_edit = file_order.edit_deadline and now <= file_order.edit_deadline
+
+                    if can_edit:
+                        # هنوز قابل ویرایش
+                        caption = (
+                            f"📄 فایل شما\n\n"
+                            f"⏱ زمان ویرایش: **{delay_minutes} دقیقه**\n"
+                            f"🚚 زمان تحویل: {delivery_time_display}\n"
+                            f"📝 توضیحات: {description_text}\n\n"
+                            f"⚠️ شما {delay_minutes} دقیقه فرصت دارید تعداد را تغییر دهید یا سفارش را لغو کنید.\n"
+                            f"✏️ برای افزودن توضیحات، روی این پیام ریپلای کنید."
+                        )
+                        keyboard = create_initial_keyboard(file_order.print_count)
+                    else:
+                        # زمان ویرایش گذشته
+                        caption = (
+                            f"📄 فایل شما\n\n"
+                            f"🚚 زمان تحویل: {delivery_time_display}\n"
+                            f"🔢 تعداد: {file_order.print_count}\n"
+                            f"📝 توضیحات: {description_text}\n\n"
+                            f"⏰ زمان ویرایش به پایان رسیده است.\n"
+                            f"📋 فایل در حال پردازش می‌باشد."
+                        )
+                        keyboard = None  # بدون کیبورد
+
+                    # ارسال فایل
+                    sent_message = await context.bot.send_document(
+                        chat_id=user_id,
+                        document=file_order.file_id,
+                        caption=caption,
+                        reply_markup=keyboard
+                    )
+
+                    # ذخیره mapping برای callback ها
+                    if can_edit:
+                        context.user_data[f'order_bot_msg_{sent_message.message_id}'] = file_order.id
+
+                except Exception as e:
+                    print(f"❌ خطا در ارسال فایل {file_order.file_name}: {e}")
+                    continue
+
+            # پیام پایانی
+            await context.bot.send_message(
+                chat_id=user_id,
+                text="✅ همه فایل‌های در حال انجام ارسال شدند.",
                 reply_markup=get_customer_kb(user_id)
             )
 

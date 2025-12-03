@@ -1613,28 +1613,23 @@ def get_customer_in_progress_files(db: Session, user_id: int) -> List[FileOrder]
     """
     دریافت فایل‌های "در حال انجام" مشتری
 
-    فایل‌های در حال انجام = فایل‌هایی که:
-    1. مشتری ثبت کرده
-    2. زمان ادیت تموم شده (edit_deadline گذشته)
-    3. هنوز فاکتور/پرینت نشده (status != invoiced و cancelled)
+    فایل‌های در حال انجام = همه فایل‌هایی که مشتری ثبت کرده و هنوز کامل نشدن:
+    - وضعیت: pending یا confirmed (هنوز فاکتور/پرینت نشده)
+    - شامل فایل‌هایی که زمان ادیت نگذشته و گذشته
 
     Args:
         db: Database session
         user_id: شناسه کاربر مشتری
 
     Returns:
-        لیست فایل‌های در حال انجام
+        لیست فایل‌های در حال انجام (از قدیمی به جدید)
     """
-    now = now_utc()
-
     files = db.query(FileOrder).filter(
         and_(
             FileOrder.user_id == user_id,
-            FileOrder.status.in_(["pending", "confirmed"]),  # هنوز فاکتور نشده
-            FileOrder.edit_deadline.isnot(None),  # زمان ادیت تعیین شده
-            FileOrder.edit_deadline < now  # زمان ادیت گذشته
+            FileOrder.status.in_(["pending", "confirmed"])  # هنوز کامل نشده
         )
-    ).order_by(desc(FileOrder.created_at)).all()
+    ).order_by(FileOrder.created_at.asc()).all()  # قدیمی‌ترین اول
 
     return files
 
