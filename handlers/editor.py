@@ -261,18 +261,22 @@ async def show_editor_delivery_customers(update: Update, context: ContextTypes.D
     query = update.callback_query
     await query.answer()
 
-    logger.info(f"📋 ادیتور {query.from_user.id} درخواست مشتریان برای تحویل: {query.data}")
+    logger.info("=" * 80)
+    logger.info(f"📋 ادیتور {query.from_user.id} درخواست مشتریان برای تحویل")
+    logger.info(f"📥 callback_data دریافتی: '{query.data}'")
 
     delivery_time = query.data.replace("editor_delivery_", "")
-    logger.info(f"🕐 زمان تحویل استخراج شده: {delivery_time}")
+    logger.info(f"🕐 زمان تحویل استخراج شده: '{delivery_time}'")
+    logger.info(f"📏 طول رشته: {len(delivery_time)} کاراکتر")
 
     try:
+        logger.info(f"🔄 شروع ایجاد کیبورد مشتریان...")
         keyboard = get_editor_customers_keyboard(delivery_time)
 
         # delivery_time از قبل به فرمت شمسی هست (مثل "1404/07/18 - 14:30")
         # برای نمایش همان را استفاده می‌کنیم
         display_time = delivery_time
-        logger.info(f"📆 زمان تحویل برای نمایش: {display_time}")
+        logger.info(f"📆 زمان تحویل برای نمایش: '{display_time}'")
 
         await query.edit_message_text(
             f"📂 **فایل‌های تحویل {display_time}**\n\n"
@@ -336,7 +340,10 @@ async def send_files_to_editor(update: Update, context: ContextTypes.DEFAULT_TYP
 
 async def send_all_files_for_delivery(query, delivery_time_display: str, editor_id: int):
     """ارسال همه فایل‌های یک زمان تحویل - با فیلتر دسترسی"""
-    logger.info(f"🚀 شروع ارسال همه فایل‌های زمان تحویل {delivery_time_display}")
+    logger.info("=" * 80)
+    logger.info(f"🚀 شروع ارسال همه فایل‌ها")
+    logger.info(f"📥 زمان تحویل دریافتی: '{delivery_time_display}'")
+    logger.info(f"👤 ادیتور: {editor_id}")
 
     with database.connection.SessionLocal() as db:
         try:
@@ -351,9 +358,15 @@ async def send_all_files_for_delivery(query, delivery_time_display: str, editor_
                 if file_order.delivery_datetime:
                     # فرمت تاریخ شمسی برای مقایسه
                     file_delivery_display = format_shamsi(file_order.delivery_datetime, include_time=True)
-                    logger.info(f"🔍 مقایسه: '{file_delivery_display}' با '{delivery_time_display}'")
+                    logger.info(f"🔍 فایل: {file_order.file_name}")
+                    logger.info(f"   - فرمت شده: '{file_delivery_display}'")
+                    logger.info(f"   - مقایسه با: '{delivery_time_display}'")
+                    logger.info(f"   - برابر است؟ {file_delivery_display == delivery_time_display}")
                     if file_delivery_display == delivery_time_display:
                         matching_files.append(file_order)
+                        logger.info(f"   ✅ اضافه شد")
+                    else:
+                        logger.info(f"   ❌ مطابقت ندارد")
 
             logger.info(f"📊 فایل‌های مطابق: {len(matching_files)}")
 

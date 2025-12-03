@@ -64,12 +64,18 @@ def get_editor_main_keyboard() -> InlineKeyboardMarkup:
 
 def get_editor_customers_keyboard(delivery_time_display: str) -> InlineKeyboardMarkup:
     """کیبورد مشتریان - گروه‌بندی بر اساس delivery_datetime"""
-    logger.info(f"🔍 شروع ایجاد کیبورد مشتریان برای زمان تحویل: {delivery_time_display}")
+    import database.connection
+    import database.editor_crud
+
+    logger.info("=" * 80)
+    logger.info(f"🔍 شروع ایجاد کیبورد مشتریان")
+    logger.info(f"📥 زمان تحویل دریافتی: '{delivery_time_display}'")
+    logger.info(f"📏 طول رشته: {len(delivery_time_display)} کاراکتر")
+    logger.info(f"🔤 نوع: {type(delivery_time_display)}")
 
     with database.connection.SessionLocal() as db:
         try:
             # دریافت فایل‌های قابل دسترس برای ادیتور
-            import database.editor_crud
             accessible_files = database.editor_crud.get_accessible_files_for_editor(db, "pending")
 
             logger.info(f"📊 کل فایل‌های قابل دسترس: {len(accessible_files)}")
@@ -83,13 +89,19 @@ def get_editor_customers_keyboard(delivery_time_display: str) -> InlineKeyboardM
                     file_delivery_display = format_shamsi(file_order.delivery_datetime, include_time=True)
 
                     logger.info(f"🔍 فایل: {file_order.file_name}")
-                    logger.info(f"   - delivery_datetime: {file_order.delivery_datetime}")
+                    logger.info(f"   - delivery_datetime (UTC): {file_order.delivery_datetime}")
                     logger.info(f"   - فرمت شده: '{file_delivery_display}'")
+                    logger.info(f"   - طول فرمت شده: {len(file_delivery_display)} کاراکتر")
                     logger.info(f"   - مقایسه با: '{delivery_time_display}'")
+                    logger.info(f"   - برابر است؟ {file_delivery_display == delivery_time_display}")
 
                     if file_delivery_display == delivery_time_display:
                         matching_files.append(file_order)
                         logger.info(f"✅ فایل {file_order.file_name} مطابقت دارد")
+                    else:
+                        logger.info(f"❌ فایل {file_order.file_name} مطابقت ندارد")
+                else:
+                    logger.warning(f"⚠️ فایل {file_order.file_name} delivery_datetime ندارد")
 
             logger.info(f"📊 فایل‌های مطابق: {len(matching_files)}")
 
@@ -175,10 +187,16 @@ def get_editor_delivery_times_keyboard():
     import database.connection
     import database.editor_crud
 
+    logger.info("=" * 80)
+    logger.info("🔍 شروع ایجاد کیبورد زمان‌های تحویل")
+
     with database.connection.SessionLocal() as db:
         accessible_files = database.editor_crud.get_accessible_files_for_editor(db, "pending")
 
+        logger.info(f"📊 تعداد فایل‌های قابل دسترس: {len(accessible_files)}")
+
         if not accessible_files:
+            logger.info("❌ هیچ فایل قابل دسترسی وجود ندارد")
             keyboard = [[InlineKeyboardButton("❌ فایلی موجود نیست", callback_data="no_files")]]
             keyboard.append([InlineKeyboardButton("🏠 منوی اصلی", callback_data="editor_main_menu")])
             return InlineKeyboardMarkup(keyboard)
@@ -186,23 +204,39 @@ def get_editor_delivery_times_keyboard():
         delivery_groups = defaultdict(list)
 
         for file_order in accessible_files:
+            logger.info(f"📄 بررسی فایل: {file_order.file_name}")
+            logger.info(f"   - delivery_datetime (UTC): {file_order.delivery_datetime}")
+            logger.info(f"   - edit_deadline (UTC): {file_order.edit_deadline}")
+
             # گروه‌بندی بر اساس delivery_datetime به جای edit_deadline
             if file_order.delivery_datetime:
                 # فرمت تاریخ شمسی برای نمایش
                 time_display = format_shamsi(file_order.delivery_datetime, include_time=True)
+                logger.info(f"   - فرمت شمسی: '{time_display}'")
                 delivery_groups[time_display].append(file_order)
+            else:
+                logger.warning(f"   ⚠️ فایل {file_order.file_name} delivery_datetime ندارد!")
+
+        logger.info(f"\n📦 گروه‌های ایجاد شده: {len(delivery_groups)}")
+        for time_display, files in delivery_groups.items():
+            logger.info(f"   - '{time_display}': {len(files)} فایل")
 
         keyboard = []
 
         for time_display, files in sorted(delivery_groups.items()):
             count = len(files)
+            callback_data = f"editor_delivery_{time_display}"
+            logger.info(f"🔘 ایجاد دکمه: '{time_display}' با callback_data='{callback_data}'")
             keyboard.append([
                 InlineKeyboardButton(
                     f"🕐 {time_display} ({count} فایل)",
-                    callback_data=f"editor_delivery_{time_display}"
+                    callback_data=callback_data
                 )
             ])
 
         keyboard.append([InlineKeyboardButton("🏠 منوی اصلی", callback_data="editor_main_menu")])
+
+        logger.info(f"✅ کیبورد با {len(keyboard)-1} دکمه زمانی ایجاد شد")
+        logger.info("=" * 80)
 
         return InlineKeyboardMarkup(keyboard)
