@@ -9,21 +9,21 @@ from keyboards.customer import get_customer_kb
 from keyboards.admin import get_admin_main_menu
 from .registration import start_registration
 from utils.referral import extract_referral_code
-from config import ADMIN_ID, OPERATORS_IDS, EDITORS_IDS, VISITORS_IDS
+from config import ADMIN_ID
 
 
 
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """هندلر دستور /start."""
     user_id = update.effective_user.id
-    if user_id in EDITORS_IDS:
-        from handlers.editor import handle_editor_menu
-        await handle_editor_menu(update, context)
-        return
     full_name = update.effective_user.full_name or update.effective_user.username or "کاربر"
     phone_number = None
 
     with database.connection.SessionLocal() as db:
+        # دریافت لیست staff از دیتابیس
+        operators_ids = crud.get_operators_ids(db)
+        editors_ids = crud.get_editors_ids(db)
+        visitors_ids = crud.get_visitors_ids(db)
 
         # اگر ادمین بود
         if user_id == ADMIN_ID:
@@ -34,9 +34,14 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> i
             )
             return ConversationHandler.END
 
+        # اگر ادیتور بود - check first because editors might upload files
+        elif user_id in editors_ids:
+            from handlers.editor import handle_editor_menu
+            await handle_editor_menu(update, context)
+            return ConversationHandler.END
+
         # اگر اپراتور بود
-        elif user_id in OPERATORS_IDS:
-            crud.add_operator_if_not_exists(db, user_id=user_id, full_name=full_name, phone_number=phone_number)
+        elif user_id in operators_ids:
             from keyboards.operator import get_operator_kb
             await update.message.reply_text(
                 "سلام، اپراتور عزیز! به ربات خوش آمدید.",
@@ -44,18 +49,8 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> i
             )
             return ConversationHandler.END
 
-        # اگر ادیتور بود
-        elif user_id in EDITORS_IDS:
-            crud.add_editor_if_not_exists(db, user_id=user_id, full_name=full_name, phone_number=phone_number)
-            await update.message.reply_text(
-                "سلام، ادیتور عزیز! به ربات خوش آمدید.",
-                # اینجا می‌تونید کیبورد ادیتور بدید اگر دارید
-            )
-            return ConversationHandler.END
-
         # اگر ویزیتور بود
-        elif user_id in VISITORS_IDS:
-            crud.add_visitor_if_not_exists(db, user_id=user_id, full_name=full_name, phone_number=phone_number)
+        elif user_id in visitors_ids:
             await update.message.reply_text(
                 "سلام، ویزیتور عزیز! به ربات خوش آمدید.",
                 # اینجا می‌تونید کیبورد ویزیتور بدید اگر دارید

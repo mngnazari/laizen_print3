@@ -34,7 +34,7 @@ import database.models
 # ===============================
 
 # --- Start & Registration ---
-from handlers.start import start_command, OPERATORS_IDS
+from handlers.start import start_command
 from handlers.registration import (
     start_registration,
     get_full_name,
@@ -90,8 +90,7 @@ from handlers.editor import (
     handle_editor_menu,
     handle_editor_callbacks,
     handle_editor_file_upload,
-    show_editor_main_menu,
-    EDITORS_IDS
+    show_editor_main_menu
 )
 
 # --- Vault Management ---
@@ -323,6 +322,57 @@ def initialize_default_settings():
                 logger.info(f"ℹ️ تنظیم editor_access_delay_minutes قبلاً ست شده: {existing.setting_value}")
     except Exception as e:
         logger.error(f"❌ خطا در مقداردهی تنظیمات اولیه: {e}")
+
+# ============================================================
+# 🟢 Staff ID Management / مدیریت آیدی کارکنان
+# ============================================================
+
+def load_staff_ids():
+    """بارگذاری لیست آیدی کارکنان از دیتابیس"""
+    with database.connection.SessionLocal() as db:
+        operators = database.crud.get_operators_ids(db)
+        editors = database.crud.get_editors_ids(db)
+        visitors = database.crud.get_visitors_ids(db)
+
+    logger.info(f"📋 Staff IDs loaded: {len(operators)} operators, {len(editors)} editors, {len(visitors)} visitors")
+    return operators, editors, visitors
+
+def is_operator(user_id: int) -> bool:
+    """بررسی اینکه کاربر اپراتور است یا نه"""
+    with database.connection.SessionLocal() as db:
+        operators = database.crud.get_operators_ids(db)
+        return user_id in operators
+
+def is_editor(user_id: int) -> bool:
+    """بررسی اینکه کاربر ادیتور است یا نه"""
+    with database.connection.SessionLocal() as db:
+        editors = database.crud.get_editors_ids(db)
+        return user_id in editors
+
+def is_visitor(user_id: int) -> bool:
+    """بررسی اینکه کاربر ویزیتور است یا نه"""
+    with database.connection.SessionLocal() as db:
+        visitors = database.crud.get_visitors_ids(db)
+        return user_id in visitors
+
+# Custom filters برای staff
+def operator_filter(update: Update) -> bool:
+    """Filter برای اپراتورها"""
+    if not update.effective_user:
+        return False
+    return is_operator(update.effective_user.id)
+
+def editor_filter(update: Update) -> bool:
+    """Filter برای ادیتورها"""
+    if not update.effective_user:
+        return False
+    return is_editor(update.effective_user.id)
+
+def visitor_filter(update: Update) -> bool:
+    """Filter برای ویزیتورها"""
+    if not update.effective_user:
+        return False
+    return is_visitor(update.effective_user.id)
 
 # ============================================================
 # 🟢 Main Function / تابع اصلی ربات
@@ -900,35 +950,36 @@ def main() -> None:
 
     # Editor message handlers
     application.add_handler(MessageHandler(
-        filters.Regex(r'^📝 منوی ادیتور') & filters.User(user_id=EDITORS_IDS),
+        filters.Regex(r'^📝 منوی ادیتور') & filters.BaseFilter.from_callable(editor_filter),
         handle_editor_menu
     ))
 
     application.add_handler(MessageHandler(
-        filters.Document.ALL & filters.User(user_id=EDITORS_IDS),
+        filters.Document.ALL & filters.BaseFilter.from_callable(editor_filter),
         handle_editor_file_upload
     ))
     logger.info("✅ Editor message handlers اضافه شد")
 
     # Operator message handlers
     application.add_handler(MessageHandler(
-        filters.Regex(r'^(📋|🔙) منوی اصلی') & filters.User(user_id=OPERATORS_IDS),
+        filters.Regex(r'^(📋|🔙) منوی اصلی') & filters.BaseFilter.from_callable(operator_filter),
         handle_operator_menu
     ))
 
     application.add_handler(MessageHandler(
-        filters.Regex(r'^📋 صدور فاکتور') & filters.User(user_id=OPERATORS_IDS),
+        filters.Regex(r'^📋 صدور فاکتور') & filters.BaseFilter.from_callable(operator_filter),
         show_customers_for_invoice
     ))
 
     application.add_handler(MessageHandler(
-        filters.Regex(r'^(📊 آمار کارهای من|👥 مشاهده مشتریان|⚙️ تنظیمات)') & filters.User(
-            user_id=OPERATORS_IDS), handle_operator_menu))
+        filters.Regex(r'^(📊 آمار کارهای من|👥 مشاهده مشتریان|⚙️ تنظیمات)') & filters.BaseFilter.from_callable(operator_filter),
+        handle_operator_menu
+    ))
     logger.info("✅ Operator message handlers اضافه شدند")
 
     # File handlers
     application.add_handler(MessageHandler(
-        filters.Document.ALL & ~filters.User(user_id=EDITORS_IDS) & ~filters.COMMAND,
+        filters.Document.ALL & ~filters.BaseFilter.from_callable(editor_filter) & ~filters.COMMAND,
         handle_file
     ))
     application.add_handler(
@@ -938,14 +989,14 @@ def main() -> None:
     # Customer message handlers
     # Customer message handlers
     application.add_handler(MessageHandler(
-        filters.Regex(r'^🏠 منوی اصلی$') & ~filters.User(user_id=ADMIN_ID) & ~filters.User(user_id=OPERATORS_IDS),
+        filters.Regex(r'^🏠 منوی اصلی$') & ~filters.User(user_id=ADMIN_ID) & ~filters.BaseFilter.from_callable(operator_filter),
         handle_customer_menu
     ))
 
     application.add_handler(MessageHandler(
         filters.Regex(
             r'^(💳 اعتبار و وضعیت سفارش‌ها|📂 آرشیو فایل‌ها|👥 زیرمجموعه‌ها|🧾 فاکتورها|💼 کیف پول و اعتبار و فاکتور|📊 آمار گروهی|🎁 دعوت و کسب اعتبار)$'
-        ) & ~filters.User(user_id=ADMIN_ID) & ~filters.User(user_id=OPERATORS_IDS),
+        ) & ~filters.User(user_id=ADMIN_ID) & ~filters.BaseFilter.from_callable(operator_filter),
         handle_customer_menu
     ))
 
@@ -955,7 +1006,7 @@ def main() -> None:
     application.add_handler(CommandHandler(
         "files",
         operator_files_command,
-        filters=filters.User(user_id=OPERATORS_IDS)
+        filters=filters.BaseFilter.from_callable(operator_filter)
     ))
     logger.info("✅ Operator files command اضافه شد")
 
