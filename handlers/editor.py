@@ -15,7 +15,7 @@ from utils.editor_state_manager import EditorStateManager
 from datetime import datetime, timedelta
 import logging
 from sqlalchemy.orm import joinedload
-from utils.timezone_utils import format_shamsi_short
+from utils.timezone_utils import format_shamsi_short, format_shamsi
 
 # تنظیم لاگر
 logging.basicConfig(level=logging.INFO)
@@ -269,16 +269,10 @@ async def show_editor_delivery_customers(update: Update, context: ContextTypes.D
     try:
         keyboard = get_editor_customers_keyboard(delivery_time)
 
-        # تبدیل زمان به شمسی برای نمایش
-        try:
-            # delivery_time قبلاً به فرمت "%Y/%m/%d %H:%M" هست
-            dt = datetime.strptime(delivery_time, "%Y/%m/%d %H:%M")
-            shamsi_dt = jdatetime.datetime.fromgregorian(datetime=dt)
-            display_time = shamsi_dt.strftime('%m/%d-%H:%M')
-            logger.info(f"📆 تبدیل تاریخ: {delivery_time} -> {display_time}")
-        except Exception as e:
-            logger.error(f"❌ خطا در تبدیل تاریخ: {e}")
-            display_time = delivery_time
+        # delivery_time از قبل به فرمت شمسی هست (مثل "1404/07/18 - 14:30")
+        # برای نمایش همان را استفاده می‌کنیم
+        display_time = delivery_time
+        logger.info(f"📆 زمان تحویل برای نمایش: {display_time}")
 
         await query.edit_message_text(
             f"📂 **فایل‌های تحویل {display_time}**\n\n"
@@ -340,9 +334,9 @@ async def send_files_to_editor(update: Update, context: ContextTypes.DEFAULT_TYP
 
 
 
-async def send_all_files_for_delivery(query, edit_deadline_time: str, editor_id: int):
-    """ارسال همه فایل‌های یک ددتایم ادیت - با فیلتر دسترسی"""
-    logger.info(f"🚀 شروع ارسال همه فایل‌های ددتایم ادیت {edit_deadline_time}")
+async def send_all_files_for_delivery(query, delivery_time_display: str, editor_id: int):
+    """ارسال همه فایل‌های یک زمان تحویل - با فیلتر دسترسی"""
+    logger.info(f"🚀 شروع ارسال همه فایل‌های زمان تحویل {delivery_time_display}")
 
     with database.connection.SessionLocal() as db:
         try:
@@ -351,19 +345,14 @@ async def send_all_files_for_delivery(query, edit_deadline_time: str, editor_id:
 
             logger.info(f"📊 کل فایل‌های قابل دسترس: {len(accessible_files)}")
 
-            # فیلتر دقیق بر اساس ددتایم ادیت
+            # فیلتر بر اساس delivery_datetime
             matching_files = []
             for file_order in accessible_files:
-                file_edit_deadline = None
-
-                if file_order.edit_deadline is not None:
-                    file_edit_deadline = file_order.edit_deadline
-                elif file_order.delivery_datetime is not None:
-                    file_edit_deadline = file_order.delivery_datetime - timedelta(hours=18)
-
-                if file_edit_deadline:
-                    file_shamsi_display = get_shamsi_time_display(file_order)
-                    if file_shamsi_display == edit_deadline_time:
+                if file_order.delivery_datetime:
+                    # فرمت تاریخ شمسی برای مقایسه
+                    file_delivery_display = format_shamsi(file_order.delivery_datetime, include_time=True)
+                    logger.info(f"🔍 مقایسه: '{file_delivery_display}' با '{delivery_time_display}'")
+                    if file_delivery_display == delivery_time_display:
                         matching_files.append(file_order)
 
             logger.info(f"📊 فایل‌های مطابق: {len(matching_files)}")
@@ -437,33 +426,28 @@ async def send_all_files_for_delivery(query, edit_deadline_time: str, editor_id:
             import traceback
             logger.error(traceback.format_exc())
 
-async def send_customer_files_for_delivery(query, customer_code: str, edit_deadline_time: str, editor_id: int):
-    """ارسال فایل‌های مشتری خاص - بدون تغییر"""
-    logger.info(f"👤 شروع ارسال فایل‌های مشتری {customer_code} برای ددتایم {edit_deadline_time}")
+async def send_customer_files_for_delivery(query, customer_code: str, delivery_time_display: str, editor_id: int):
+    """ارسال فایل‌های مشتری خاص - با فیلتر بر اساس delivery_datetime"""
+    logger.info(f"👤 شروع ارسال فایل‌های مشتری {customer_code} برای زمان تحویل {delivery_time_display}")
 
     with database.connection.SessionLocal() as db:
         try:
-            # دریافت همه فایل‌های pending برای این مشتری
-            all_files = db.query(database.models.FileOrder).join(database.models.User).filter(
-                database.models.FileOrder.status == "pending",
-                database.models.User.customer_code == customer_code
-            ).options(joinedload(database.models.FileOrder.user)).all()
+            # دریافت فایل‌های قابل دسترس برای این مشتری
+            accessible_files = editor_crud.get_accessible_files_for_editor(db, "pending")
 
-            logger.info(f"📊 کل فایل‌های مشتری {customer_code}: {len(all_files)}")
+            # فیلتر بر اساس customer_code
+            customer_files = [f for f in accessible_files if f.user and f.user.customer_code == customer_code]
 
-            # فیلتر دقیق بر اساس ددتایم ادیت
+            logger.info(f"📊 کل فایل‌های قابل دسترس مشتری {customer_code}: {len(customer_files)}")
+
+            # فیلتر بر اساس delivery_datetime
             matching_files = []
-            for file_order in all_files:
-                file_edit_deadline = None
-
-                if file_order.edit_deadline is not None:
-                    file_edit_deadline = file_order.edit_deadline
-                elif file_order.delivery_datetime is not None:
-                    file_edit_deadline = file_order.delivery_datetime - timedelta(hours=18)
-
-                if file_edit_deadline:
-                    file_edit_deadline_str = file_edit_deadline.strftime("%Y/%m/%d %H:%M")
-                    if file_edit_deadline_str == edit_deadline_time:
+            for file_order in customer_files:
+                if file_order.delivery_datetime:
+                    # فرمت تاریخ شمسی برای مقایسه
+                    file_delivery_display = format_shamsi(file_order.delivery_datetime, include_time=True)
+                    logger.info(f"🔍 مقایسه: '{file_delivery_display}' با '{delivery_time_display}'")
+                    if file_delivery_display == delivery_time_display:
                         matching_files.append(file_order)
 
             logger.info(f"📊 فایل‌های مطابق: {len(matching_files)}")
