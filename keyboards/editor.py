@@ -62,37 +62,32 @@ def get_editor_main_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(keyboard)
 
 
-def get_editor_customers_keyboard(edit_deadline_time: str) -> InlineKeyboardMarkup:
-    """کیبورد مشتریان - با timezone handling درست"""
-    logger.info(f"🔍 شروع ایجاد کیبورد مشتریان برای ددتایم: {edit_deadline_time}")
+def get_editor_customers_keyboard(delivery_time_display: str) -> InlineKeyboardMarkup:
+    """کیبورد مشتریان - گروه‌بندی بر اساس delivery_datetime"""
+    logger.info(f"🔍 شروع ایجاد کیبورد مشتریان برای زمان تحویل: {delivery_time_display}")
 
     with database.connection.SessionLocal() as db:
         try:
-            # دریافت همه فایل‌های pending
-            all_files = db.query(database.models.FileOrder).filter(
-                database.models.FileOrder.status == "pending"
-            ).options(joinedload(database.models.FileOrder.user)).all()
+            # دریافت فایل‌های قابل دسترس برای ادیتور
+            import database.editor_crud
+            accessible_files = database.editor_crud.get_accessible_files_for_editor(db, "pending")
 
-            logger.info(f"📊 کل فایل‌های pending: {len(all_files)}")
+            logger.info(f"📊 کل فایل‌های قابل دسترس: {len(accessible_files)}")
 
-            # فیلتر فایل‌ها بر اساس ددتایم ادیت
+            # فیلتر فایل‌ها بر اساس delivery_datetime
             matching_files = []
 
-            for file_order in all_files:
-                file_edit_deadline = get_edit_deadline_or_calculate(file_order)
+            for file_order in accessible_files:
+                if file_order.delivery_datetime:
+                    # فرمت تاریخ شمسی برای مقایسه
+                    file_delivery_display = format_shamsi(file_order.delivery_datetime, include_time=True)
 
-                logger.info(f"🔍 فایل: {file_order.file_name}")
-                logger.info(f"   - edit_deadline در دیتابیس: {file_order.edit_deadline}")
-                logger.info(f"   - delivery_datetime در دیتابیس: {file_order.delivery_datetime}")
-                logger.info(f"   - محاسبه شده: {file_edit_deadline}")
+                    logger.info(f"🔍 فایل: {file_order.file_name}")
+                    logger.info(f"   - delivery_datetime: {file_order.delivery_datetime}")
+                    logger.info(f"   - فرمت شده: '{file_delivery_display}'")
+                    logger.info(f"   - مقایسه با: '{delivery_time_display}'")
 
-                if file_edit_deadline:
-                    file_edit_deadline_str = file_edit_deadline.strftime("%Y/%m/%d %H:%M")
-                    logger.info(f"   - فرمت شده: '{file_edit_deadline_str}'")
-                    logger.info(f"   - مقایسه با: '{edit_deadline_time}'")
-                    logger.info(f"   - برابر است؟ {file_edit_deadline_str == edit_deadline_time}")
-
-                    if file_edit_deadline_str == edit_deadline_time:
+                    if file_delivery_display == delivery_time_display:
                         matching_files.append(file_order)
                         logger.info(f"✅ فایل {file_order.file_name} مطابقت دارد")
 
@@ -118,7 +113,7 @@ def get_editor_customers_keyboard(edit_deadline_time: str) -> InlineKeyboardMark
             if matching_files:
                 keyboard.append([InlineKeyboardButton(
                     f"📦 همه ({total_new_files})",
-                    callback_data=f"editor_send_all_{edit_deadline_time}"
+                    callback_data=f"editor_send_all_{delivery_time_display}"
                 )])
                 logger.info(f"🔘 دکمه همه اضافه شد: ({total_new_files})")
 
@@ -128,7 +123,7 @@ def get_editor_customers_keyboard(edit_deadline_time: str) -> InlineKeyboardMark
                     new_files_count = sum(1 for f in customer_files if f.assigned_editor_id is None)
 
                     button_text = f"👤 {customer_code} ({new_files_count})"
-                    callback_data = f"editor_send_customer_{customer_code}_{edit_deadline_time}"
+                    callback_data = f"editor_send_customer_{customer_code}_{delivery_time_display}"
                     keyboard.append([InlineKeyboardButton(button_text, callback_data=callback_data)])
                     logger.info(f"🔘 دکمه مشتری اضافه شد: {button_text}")
 
@@ -175,7 +170,7 @@ def count_new_files_for_delivery_time(db, delivery_time: str) -> int:
 
 
 def get_editor_delivery_times_keyboard():
-    """کیبورد زمان‌های تحویل - با فیلتر دسترسی"""
+    """کیبورد زمان‌های تحویل - با فیلتر دسترسی (گروه‌بندی بر اساس delivery_datetime)"""
     from collections import defaultdict
     import database.connection
     import database.editor_crud
@@ -191,11 +186,11 @@ def get_editor_delivery_times_keyboard():
         delivery_groups = defaultdict(list)
 
         for file_order in accessible_files:
-            edit_deadline = get_edit_deadline_or_calculate(file_order)
-
-            if edit_deadline:
-                time_key = edit_deadline.strftime("%Y/%m/%d %H:%M")
-                delivery_groups[time_key].append(file_order)
+            # گروه‌بندی بر اساس delivery_datetime به جای edit_deadline
+            if file_order.delivery_datetime:
+                # فرمت تاریخ شمسی برای نمایش
+                time_display = format_shamsi(file_order.delivery_datetime, include_time=True)
+                delivery_groups[time_display].append(file_order)
 
         keyboard = []
 
@@ -211,22 +206,3 @@ def get_editor_delivery_times_keyboard():
         keyboard.append([InlineKeyboardButton("🏠 منوی اصلی", callback_data="editor_main_menu")])
 
         return InlineKeyboardMarkup(keyboard)
-
-from datetime import datetime, timedelta, timezone
-
-IRAN_TZ = timezone(timedelta(hours=3, minutes=30))
-
-def normalize_datetime_to_iran(dt):
-    if dt is None:
-        return None
-    if dt.tzinfo is None:
-        dt = dt.replace(tzinfo=timezone.utc)
-    return dt.astimezone(IRAN_TZ)
-
-def get_edit_deadline_or_calculate(file_order):
-    if file_order.edit_deadline:
-        return normalize_datetime_to_iran(file_order.edit_deadline)
-    elif file_order.delivery_datetime:
-        delivery_iran = normalize_datetime_to_iran(file_order.delivery_datetime)
-        return delivery_iran - timedelta(hours=18)
-    return None
