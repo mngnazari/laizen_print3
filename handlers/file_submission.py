@@ -143,12 +143,13 @@ async def handle_file(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         return
 
     try:
-        edit_deadline_j = jdatetime.datetime.fromtimestamp(edit_deadline.timestamp())
-        delivery_time_j = jdatetime.datetime.fromtimestamp(delivery_time.timestamp())
+        # استفاده از تابع مرکزی برای فرمت تاریخ شمسی
+        edit_deadline_display = format_shamsi_short(edit_deadline)
+        delivery_time_display = format_shamsi_short(delivery_time)
     except Exception as e:
         logger.error(f"خطا در تبدیل تاریخ شمسی: {e}")
-        edit_deadline_j = edit_deadline
-        delivery_time_j = delivery_time
+        edit_deadline_display = "نامشخص"
+        delivery_time_display = "نامشخص"
 
     # محاسبه زمان باقی‌مانده برای ویرایش
     with database.connection.SessionLocal() as db:
@@ -157,7 +158,7 @@ async def handle_file(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
     caption = (
         f"📄 فایل شما دریافت شد!\n\n"
         f"⏱ زمان ویرایش: **{delay_minutes} دقیقه**\n"
-        f"🚚 زمان تحویل: {delivery_time_j.strftime('%m/%d-%H:%M')}\n"
+        f"🚚 زمان تحویل: {delivery_time_display}\n"
         f"📝 توضیحات: فاقد توضیحات\n\n"
         f"⚠️ شما {delay_minutes} دقیقه فرصت دارید تعداد را تغییر دهید یا سفارش را لغو کنید.\n"
         f"✏️ برای افزودن توضیحات، روی این پیام ریپلای کنید."
@@ -302,12 +303,8 @@ async def handle_reply(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
 
             database.crud.update_file_order(db, order_id, description=description)
 
-            delivery_dt_gregorian_from_db = db_order.delivery_datetime
-            delivery_dt_j_for_display = jdatetime.datetime.fromtimestamp(
-                delivery_dt_gregorian_from_db.timestamp()) if delivery_dt_gregorian_from_db else None
-
-            caption_delivery_time = format_delivery_datetime(
-                delivery_dt_j_for_display) if delivery_dt_j_for_display else "نامشخص"
+            # فرمت کردن زمان تحویل برای نمایش
+            caption_delivery_time = format_shamsi_short(db_order.delivery_datetime) if db_order.delivery_datetime else "نامشخص"
 
             new_caption = (
                 f"🕐 زمان تحویل: {caption_delivery_time}\n"
@@ -443,10 +440,7 @@ async def handle_callback_query(update: Update, context: ContextTypes.DEFAULT_TY
                     db_order.print_count = new_count
 
                 delivery_dt_gregorian_from_db = db_order.delivery_datetime
-                delivery_dt_j_for_display = jdatetime.datetime.fromtimestamp(
-                    delivery_dt_gregorian_from_db.timestamp()) if delivery_dt_gregorian_from_db else "نامشخص"
-                caption_delivery_time = format_delivery_datetime(
-                    delivery_dt_j_for_display) if delivery_dt_j_for_display else "نامشخص"
+                caption_delivery_time = format_shamsi_short(delivery_dt_gregorian_from_db) if delivery_dt_gregorian_from_db else "نامشخص"
                 description_text = db_order.description or "فاقد توضیحات"
                 new_caption = (
                     f"🕐 زمان تحویل: {caption_delivery_time}\n"
