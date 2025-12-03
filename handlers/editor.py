@@ -200,42 +200,8 @@ async def show_editor_pending_files(update: Update, context: ContextTypes.DEFAUL
                     )
                 return
 
-            # گروه‌بندی فایل‌ها بر اساس زمان تحویل
-            from collections import defaultdict
-
-            delivery_groups = defaultdict(list)
-            for file_order in accessible_files:
-                # استفاده از edit_deadline اصلی برای کلید
-                if file_order.edit_deadline:
-                    time_key = file_order.edit_deadline.strftime("%Y/%m/%d %H:%M")
-                elif file_order.delivery_datetime:
-                    edit_deadline = file_order.delivery_datetime - timedelta(hours=18)
-                    time_key = edit_deadline.strftime("%Y/%m/%d %H:%M")
-                else:
-                    time_key = "نامشخص"
-
-                delivery_groups[time_key].append(file_order)
-
-            # ساخت کیبورد
-            keyboard_buttons = []
-            for time_key, files in sorted(delivery_groups.items()):
-                count = len(files)
-
-                # نمایش به صورت شمسی برای کاربر
-                display_time = get_shamsi_time_display(files[0]) if files else time_key
-
-                keyboard_buttons.append([
-                    InlineKeyboardButton(
-                        f"🕐 {display_time} ({count} فایل)",
-                        callback_data=f"editor_delivery_{time_key}"  # فرمت میلادی کامل
-                    )
-                ])
-
-            keyboard_buttons.append([
-                InlineKeyboardButton("🏠 منوی اصلی", callback_data="editor_main_menu")
-            ])
-
-            keyboard = InlineKeyboardMarkup(keyboard_buttons)
+            # استفاده از تابع keyboard که از format_shamsi استفاده می‌کنه
+            keyboard = get_editor_delivery_times_keyboard()
 
             await query.edit_message_text(
                 f"📋 **فایل‌های قابل دسترس برای ادیت**\n\n"
