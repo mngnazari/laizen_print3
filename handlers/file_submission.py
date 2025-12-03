@@ -370,28 +370,21 @@ async def handle_callback_query(update: Update, context: ContextTypes.DEFAULT_TY
             # چک کردن deadline ویرایش
             if db_order.edit_deadline:
                 try:
-                    from datetime import timezone, timedelta
-                    IRAN_TZ = timezone(timedelta(hours=3, minutes=30))
-
-                    # زمان فعلی ایران
-                    now_iran = datetime.now(IRAN_TZ)
-
-                    # deadline در DB به صورت naive (بدون timezone) ذخیره شده
-                    # ولی مقدارش زمان ایران است، پس فقط برای مقایسه naive می‌کنیم
-                    now_naive = now_iran.replace(tzinfo=None)
-                    deadline_naive = db_order.edit_deadline  # این هم naive و ایران است
+                    # همه datetime ها در دیتابیس UTC هستن (naive)
+                    now_utc_time = now_utc()
+                    deadline_utc = db_order.edit_deadline
 
                     logger.info(f"🔍 چک deadline برای سفارش {order_id}:")
                     logger.info(f"  - فایل: {db_order.file_name}")
-                    logger.info(f"  - زمان فعلی (ایران، naive): {now_naive}")
-                    logger.info(f"  - Edit Deadline (naive): {deadline_naive}")
+                    logger.info(f"  - زمان فعلی (UTC): {now_utc_time}")
+                    logger.info(f"  - Edit Deadline (UTC): {deadline_utc}")
 
-                    time_diff_seconds = (deadline_naive - now_naive).total_seconds()
+                    time_diff_seconds = (deadline_utc - now_utc_time).total_seconds()
                     time_diff_minutes = time_diff_seconds / 60
                     logger.info(f"  - تفاوت: {time_diff_minutes:.2f} دقیقه ({time_diff_seconds:.0f} ثانیه)")
 
-                    if now_naive > deadline_naive:
-                        minutes_passed = int((now_naive - deadline_naive).total_seconds() / 60)
+                    if now_utc_time > deadline_utc:
+                        minutes_passed = int((now_utc_time - deadline_utc).total_seconds() / 60)
                         logger.info(f"🔒 زمان ویرایش سپری شده - {minutes_passed} دقیقه پیش")
 
                         await query.answer("⏰ زمان ویرایش سفارش به پایان رسیده است!", show_alert=True)

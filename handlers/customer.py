@@ -1,4 +1,4 @@
-# handlers/customer.py - نسخه اصلاح شده
+# handlers/customer.py
 from telegram import Update, ReplyKeyboardRemove
 from telegram.ext import ContextTypes
 import database.crud
@@ -7,19 +7,9 @@ from keyboards.customer import get_customer_kb
 from database.models import User
 from .file_archive import show_file_archive_menu
 import logging
-from database.crud import IRAN_TZ
+from .wallet_invoice import show_wallet_menu
+from utils.timezone_utils import now_utc, now_iran, utc_to_iran, format_shamsi
 
-from .wallet_invoice import show_wallet_menu
-from telegram import Update, ReplyKeyboardRemove
-from telegram.ext import ContextTypes
-import database.crud
-import database.connection
-from keyboards.customer import get_customer_kb
-from database.models import User
-from .file_archive import show_file_archive_menu
-import logging
-from database.crud import IRAN_TZ
-from .wallet_invoice import show_wallet_menu
 # تنظیم logger
 logger = logging.getLogger(__name__)
 
@@ -180,8 +170,6 @@ async def handle_customer_inline_callbacks(update: Update, context: ContextTypes
 
             import jdatetime
 
-            from database.crud import IRAN_TZ
-
             with database.connection.SessionLocal() as db:
 
                 user = database.crud.get_user(db, user_id)
@@ -205,21 +193,25 @@ async def handle_customer_inline_callbacks(update: Update, context: ContextTypes
 
                 group_members = [user] + referrals
 
-                # زمان فعلی در ایران
+                # زمان فعلی در ایران (برای نمایش)
+                iran_now = now_iran()
+                today_iran = iran_now.date()
 
-                now_iran = datetime.now(IRAN_TZ)
+                # محاسبه بازه امروز به UTC (برای مقایسه با دیتابیس)
+                from datetime import datetime as dt
+                today_start_iran = dt.combine(today_iran, dt.min.time())
+                tomorrow_start_iran = today_start_iran + timedelta(days=1)
 
-                today_iran = now_iran.date()
-
-                today_start = datetime.combine(today_iran, datetime.min.time()).replace(tzinfo=IRAN_TZ)
-
-                tomorrow_start = today_start + timedelta(days=1)
+                # تبدیل به UTC برای query
+                from utils.timezone_utils import iran_to_utc
+                today_start = iran_to_utc(today_start_iran)
+                tomorrow_start = iran_to_utc(tomorrow_start_iran)
 
                 # تاریخ شمسی
 
                 persian_date = jdatetime.date.fromgregorian(date=today_iran)
 
-                print(f"🔍 DEBUG: Iran time now: {now_iran}")
+                print(f"🔍 DEBUG: Iran time now: {iran_now}")
 
                 print(f"🔍 DEBUG: Today Iran: {today_iran}")
 
@@ -461,14 +453,22 @@ async def handle_customer_inline_callbacks(update: Update, context: ContextTypes
                 gold_discount = float(database.crud.get_system_setting(db, "group_gold_discount", "10"))
 
                 from datetime import datetime, timedelta
-                from database.crud import IRAN_TZ
 
-                now_iran = datetime.now(IRAN_TZ)
-                today_iran = now_iran.date()
-                today_start = datetime.combine(today_iran, datetime.min.time()).replace(tzinfo=IRAN_TZ)
+                # زمان فعلی در ایران
+                from datetime import datetime as dt
+                iran_now = now_iran()
+                today_iran = iran_now.date()
+
+                # محاسبه بازه به UTC
+                from utils.timezone_utils import iran_to_utc
                 days_back = 30
-                start_period = today_start - timedelta(days=days_back)
-                tomorrow_start = today_start + timedelta(days=1)
+                today_start_iran = dt.combine(today_iran, dt.min.time())
+                start_period_iran = today_start_iran - timedelta(days=days_back)
+                tomorrow_start_iran = today_start_iran + timedelta(days=1)
+
+                # تبدیل به UTC برای query
+                start_period = iran_to_utc(start_period_iran)
+                tomorrow_start = iran_to_utc(tomorrow_start_iran)
 
                 referrals = db.query(database.models.User).filter(
                     database.models.User.referrer_id == user_id
@@ -594,14 +594,22 @@ async def generate_user_referral_code_handler(update: Update, context: ContextTy
             gold_discount = float(database.crud.get_system_setting(db, "group_gold_discount", "10"))
 
             from datetime import datetime, timedelta
-            from database.crud import IRAN_TZ
 
-            now_iran = datetime.now(IRAN_TZ)
-            today_iran = now_iran.date()
-            today_start = datetime.combine(today_iran, datetime.min.time()).replace(tzinfo=IRAN_TZ)
+            # زمان فعلی در ایران
+            from datetime import datetime as dt
+            iran_now = now_iran()
+            today_iran = iran_now.date()
+
+            # محاسبه بازه به UTC
+            from utils.timezone_utils import iran_to_utc
             days_back = 30
-            start_period = today_start - timedelta(days=days_back)
-            tomorrow_start = today_start + timedelta(days=1)
+            today_start_iran = dt.combine(today_iran, dt.min.time())
+            start_period_iran = today_start_iran - timedelta(days=days_back)
+            tomorrow_start_iran = today_start_iran + timedelta(days=1)
+
+            # تبدیل به UTC برای query
+            start_period = iran_to_utc(start_period_iran)
+            tomorrow_start = iran_to_utc(tomorrow_start_iran)
 
             referrals = db.query(database.models.User).filter(
                 database.models.User.referrer_id == user_id

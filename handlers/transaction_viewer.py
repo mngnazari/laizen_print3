@@ -4,9 +4,8 @@ from telegram.ext import ContextTypes
 import database.crud
 import database.connection
 from database.models import WalletTransaction, Invoice
-import jdatetime
 from datetime import datetime, timedelta
-from database.crud import IRAN_TZ
+from utils.timezone_utils import format_shamsi
 import logging
 
 logger = logging.getLogger(__name__)
@@ -16,18 +15,8 @@ TRANSACTIONS_PER_PAGE = 10
 
 
 def gregorian_to_jalali_full(gregorian_datetime):
-    """تبدیل کامل تاریخ و ساعت میلادی به شمسی"""
-    try:
-        if gregorian_datetime.tzinfo is None:
-            gregorian_datetime = gregorian_datetime.replace(tzinfo=IRAN_TZ)
-        else:
-            gregorian_datetime = gregorian_datetime.astimezone(IRAN_TZ)
-
-        j_datetime = jdatetime.datetime.fromgregorian(datetime=gregorian_datetime)
-        return j_datetime.strftime('%Y/%m/%d - %H:%M')
-    except Exception as e:
-        logger.error(f"خطا در تبدیل تاریخ: {e}")
-        return gregorian_datetime.strftime('%Y/%m/%d - %H:%M')
+    """تبدیل کامل تاریخ و ساعت میلادی به شمسی (استفاده از ماژول مرکزی)"""
+    return format_shamsi(gregorian_datetime, include_time=True)
 
 
 def create_transaction_filters_keyboard(current_filter="all", current_page=0):
