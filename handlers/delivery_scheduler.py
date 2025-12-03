@@ -7,7 +7,7 @@ from database.models import DeliverySchedule
 from datetime import datetime, timedelta
 import logging
 from .holiday_manager import is_holiday, get_next_working_day
-from utils.timezone_utils import now_utc, now_iran
+from utils.timezone_utils import now_utc, now_iran, iran_to_utc
 
 logger = logging.getLogger(__name__)
 
@@ -505,19 +505,32 @@ async def cancel_delivery_setup(update: Update, context: ContextTypes.DEFAULT_TY
 def calculate_delivery_time(order_datetime: datetime) -> datetime:
     """
     محاسبه زمان تحویل بر اساس زمان ثبت سفارش - منطق اصلاح شده
+
+    Args:
+        order_datetime: زمان ثبت سفارش (UTC naive)
+
+    Returns:
+        زمان تحویل (UTC naive)
     """
+    # تبدیل UTC به Iran time برای محاسبات
+    from utils.timezone_utils import utc_to_iran
+    order_iran = utc_to_iran(order_datetime)
+
     try:
+
         with database.connection.SessionLocal() as db:
             schedules = db.query(DeliverySchedule).filter(
                 DeliverySchedule.is_active == True
             ).order_by(DeliverySchedule.delivery_number).all()
 
             if not schedules:
-                # پیش‌فرض: تحویل فردا 13:00
-                tomorrow = order_datetime.date() + timedelta(days=1)
-                return get_next_working_day(
+                # پیش‌فرض: تحویل فردا 13:00 (Iran time)
+                tomorrow = order_iran.date() + timedelta(days=1)
+                delivery_iran = get_next_working_day(
                     datetime.combine(tomorrow, datetime.min.time().replace(hour=13))
                 )
+                # تبدیل به UTC برای ذخیره در دیتابیس
+                return iran_to_utc(delivery_iran)
 
             # مرتب‌سازی بر اساس ساعت مرجع
             cutoff_times = []
@@ -528,8 +541,8 @@ def calculate_delivery_time(order_datetime: datetime) -> datetime:
 
             cutoff_times.sort(key=lambda x: (x[0].hour, x[0].minute))
 
-            order_time = order_datetime.time()
-            order_date = order_datetime.date()
+            order_time = order_iran.time()
+            order_date = order_iran.date()
 
             # تعیین اینکه در کدام بازه قرار داریم
             if len(schedules) == 1:
@@ -587,11 +600,14 @@ def calculate_delivery_time(order_datetime: datetime) -> datetime:
             if is_holiday(delivery_datetime.strftime('%Y-%m-%d')):
                 delivery_datetime = get_next_working_day(delivery_datetime)
 
-            return delivery_datetime
+            # تبدیل به UTC برای ذخیره در دیتابیس
+            return iran_to_utc(delivery_datetime)
 
     except Exception as e:
         logger.error(f"Error calculating delivery time: {e}")
-        tomorrow = order_datetime.date() + timedelta(days=1)
-        return get_next_working_day(
+        tomorrow = order_iran.date() + timedelta(days=1)
+        delivery_iran = get_next_working_day(
             datetime.combine(tomorrow, datetime.min.time().replace(hour=13))
         )
+        # تبدیل به UTC برای ذخیره در دیتابیس
+        return iran_to_utc(delivery_iran)
