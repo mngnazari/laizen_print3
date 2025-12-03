@@ -443,8 +443,6 @@ def complete_editor_session(db: Session, editor_id: int) -> bool:
 
 def is_file_accessible_for_editor(file_order, delay_minutes: int = 0) -> bool:
     """بررسی اینکه آیا فایل برای ادیتور قابل دسترسی هست یا نه"""
-    from datetime import timezone, timedelta
-
     logger.info(f"🔍 بررسی دسترسی فایل: {file_order.file_name}")
     logger.info(f"⏰ تاخیر تنظیم شده: {delay_minutes} دقیقه")
 
@@ -452,36 +450,33 @@ def is_file_accessible_for_editor(file_order, delay_minutes: int = 0) -> bool:
         logger.info(f"✅ حالت تست - فایل فوری قابل دسترس است")
         return True
 
-        # محاسبه زمان قابل دسترسی
-        access_time = None
+    # محاسبه زمان قابل دسترسی
+    access_time = None
 
-        if file_order.edit_deadline:
-            access_time = file_order.edit_deadline
-            logger.info(f"📅 استفاده از edit_deadline: {access_time}")
-        elif file_order.created_at:
-            access_time = file_order.created_at + timedelta(minutes=delay_minutes)
-            logger.info(f"📅 محاسبه از created_at: {file_order.created_at} + {delay_minutes} دقیقه = {access_time}")
+    if file_order.edit_deadline:
+        access_time = file_order.edit_deadline
+        logger.info(f"📅 استفاده از edit_deadline: {access_time}")
+    elif file_order.created_at:
+        access_time = file_order.created_at + timedelta(minutes=delay_minutes)
+        logger.info(f"📅 محاسبه از created_at: {file_order.created_at} + {delay_minutes} دقیقه = {access_time}")
 
-        if access_time is None:
-            logger.warning(f"⚠️ زمان دسترسی None است - فایل قابل دسترس در نظر گرفته میشه")
-            return True
+    if access_time is None:
+        logger.warning(f"⚠️ زمان دسترسی None است - فایل قابل دسترس در نظر گرفته میشه")
+        return True
 
-        # حذف timezone اگه داره
-        if hasattr(access_time, 'tzinfo') and access_time.tzinfo:
-            access_time = access_time.replace(tzinfo=None)
+    # همه datetime‌ها در دیتابیس UTC naive هستند
+    # زمان فعلی UTC
+    now = now_utc()
 
-        # زمان فعلی (بدون timezone)
-        now = datetime.now()
+    is_accessible = now >= access_time
+    time_diff_minutes = (access_time - now).total_seconds() / 60
 
-        is_accessible = now >= access_time
-        time_diff_minutes = (access_time - now).total_seconds() / 60
+    logger.info(f"🕐 زمان فعلی (UTC): {now}")
+    logger.info(f"🕐 زمان دسترسی (UTC): {access_time}")
+    logger.info(f"⏳ تفاوت: {time_diff_minutes:.2f} دقیقه")
+    logger.info(f"{'✅ قابل دسترس' if is_accessible else '🔒 هنوز قابل دسترس نیست'}")
 
-        logger.info(f"🕐 زمان فعلی: {now}")
-        logger.info(f"🕐 زمان دسترسی: {access_time}")
-        logger.info(f"⏳ تفاوت: {time_diff_minutes:.2f} دقیقه")
-        logger.info(f"{'✅ قابل دسترس' if is_accessible else '🔒 هنوز قابل دسترس نیست'}")
-
-        return is_accessible
+    return is_accessible
 
 def get_accessible_files_for_editor(db: Session, status: str = "pending") -> List[FileOrder]:
     """
