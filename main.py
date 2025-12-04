@@ -389,16 +389,18 @@ def main() -> None:
     """تابع اصلی ربات."""
     logger.info("🚀 شروع راه‌اندازی ربات...")
 
-    # حذف دیتابیس قبلی
-    db_path = pathlib.Path('print3d_orders.db')
-    if db_path.exists():
-        try:
-            os.remove(db_path)
-            logger.info("✅ دیتابیس با موفقیت پاک شد")
-        except Exception as e:
-            logger.error(f"❌ خطا در حذف دیتابیس: {e}")
+    # IMPORTANT: Database persistence enabled for production
+    # Uncomment below ONLY for development/testing when you need fresh database
+    # # حذف دیتابیس قبلی
+    # db_path = pathlib.Path('print3d_orders.db')
+    # if db_path.exists():
+    #     try:
+    #         os.remove(db_path)
+    #         logger.info("✅ دیتابیس با موفقیت پاک شد")
+    #     except Exception as e:
+    #         logger.error(f"❌ خطا در حذف دیتابیس: {e}")
 
-    # ایجاد دیتابیس
+    # ایجاد دیتابیس (اگر وجود ندارد)
     database.connection.Base.metadata.create_all(database.connection.engine)
     logger.info("🗄️ دیتابیس ایجاد شد")
 
