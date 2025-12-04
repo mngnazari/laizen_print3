@@ -388,6 +388,13 @@ operator_filter = OperatorFilter()
 editor_filter = EditorFilter()
 visitor_filter = VisitorFilter()
 
+# Debug message logger - logs ALL incoming messages
+async def debug_message_logger(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """لاگ کردن همه پیام‌های دریافتی"""
+    if update.message and update.message.text:
+        user_id = update.effective_user.id if update.effective_user else "Unknown"
+        print(f"📩 DEBUG MESSAGE RECEIVED: user_id={user_id}, text='{update.message.text}'")
+
 # ============================================================
 # 🟢 Main Function / تابع اصلی ربات
 # ============================================================
@@ -954,12 +961,7 @@ def main() -> None:
     # 📨 MESSAGE HANDLERS
     # ============================================================
 
-    # Debug message logger - logs ALL incoming messages
-    async def debug_message_logger(update: Update, context: ContextTypes.DEFAULT_TYPE):
-        if update.message and update.message.text:
-            user_id = update.effective_user.id if update.effective_user else "Unknown"
-            print(f"📩 DEBUG MESSAGE RECEIVED: user_id={user_id}, text='{update.message.text}'")
-
+    # Add global message logger
     application.add_handler(MessageHandler(filters.TEXT, debug_message_logger), group=1)
     print(f"🔍 DEBUG Global message logger added!")
 
