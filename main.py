@@ -341,7 +341,9 @@ def is_operator(user_id: int) -> bool:
     """بررسی اینکه کاربر اپراتور است یا نه"""
     with database.connection.SessionLocal() as db:
         operators = database.crud.get_operators_ids(db)
-        return user_id in operators
+        result = user_id in operators
+        print(f"🔍 DEBUG is_operator: user_id={user_id}, operators_list={operators}, result={result}")
+        return result
 
 def is_editor(user_id: int) -> bool:
     """بررسی اینکه کاربر ادیتور است یا نه"""
@@ -360,8 +362,12 @@ class OperatorFilter(filters.UpdateFilter):
     """Filter برای اپراتورها"""
     def filter(self, update: Update) -> bool:
         if not update.effective_user:
+            print(f"🔍 DEBUG OperatorFilter: No effective_user")
             return False
-        return is_operator(update.effective_user.id)
+        user_id = update.effective_user.id
+        result = is_operator(user_id)
+        print(f"🔍 DEBUG OperatorFilter: user_id={user_id}, filter_result={result}")
+        return result
 
 class EditorFilter(filters.UpdateFilter):
     """Filter برای ادیتورها"""
@@ -948,6 +954,15 @@ def main() -> None:
     # 📨 MESSAGE HANDLERS
     # ============================================================
 
+    # Debug message logger - logs ALL incoming messages
+    async def debug_message_logger(update: Update, context: ContextTypes.DEFAULT_TYPE):
+        if update.message and update.message.text:
+            user_id = update.effective_user.id if update.effective_user else "Unknown"
+            print(f"📩 DEBUG MESSAGE RECEIVED: user_id={user_id}, text='{update.message.text}'")
+
+    application.add_handler(MessageHandler(filters.TEXT, debug_message_logger), group=1)
+    print(f"🔍 DEBUG Global message logger added!")
+
     # Admin command handlers
     application.add_handler(CommandHandler("admin", show_admin_main_menu, filters=filters.User(user_id=ADMIN_ID)))
     application.add_handler(CommandHandler("test", handle_test_command))
@@ -971,6 +986,7 @@ def main() -> None:
     logger.info("✅ Editor message handlers اضافه شد")
 
     # Operator message handlers
+    print(f"🔍 DEBUG Registering operator message handlers...")
     application.add_handler(MessageHandler(
         filters.Regex(r'^(📋|🔙) منوی اصلی') & operator_filter,
         handle_operator_menu
@@ -986,6 +1002,7 @@ def main() -> None:
         handle_operator_menu
     ))
     logger.info("✅ Operator message handlers اضافه شدند")
+    print(f"🔍 DEBUG Operator handlers registered successfully!")
 
     # File handlers
     application.add_handler(MessageHandler(

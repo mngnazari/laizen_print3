@@ -18,11 +18,17 @@ from keyboards.operator import (
 async def handle_operator_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """مدیریت منوی اپراتور - نسخه جدید با کیبورد شیشه‌ای"""
 
+    print(f"🔍 DEBUG handle_operator_menu CALLED!")
+    print(f"🔍 DEBUG user_id: {update.effective_user.id}")
+    print(f"🔍 DEBUG message text: {update.message.text}")
+
     # کیبورد شیشه‌ای اصلی
     inline_keyboard = get_operator_main_inline_keyboard()
 
     # حذف کیبورد ثابت و استفاده از یک کیبورد ساده
     simple_keyboard = get_operator_kb()
+
+    print(f"🔍 DEBUG Sending operator menu messages...")
 
     await update.message.reply_text(
         "🔧 **منوی اپراتور**\n\nلطفاً عملیات مورد نظر را انتخاب کنید:",
@@ -36,6 +42,8 @@ async def handle_operator_menu(update: Update, context: ContextTypes.DEFAULT_TYP
         reply_markup=inline_keyboard,
         parse_mode="Markdown"
     )
+
+    print(f"🔍 DEBUG Messages sent successfully!")
 
 
 async def show_operator_main_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):

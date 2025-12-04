@@ -19,11 +19,15 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> i
     full_name = update.effective_user.full_name or update.effective_user.username or "کاربر"
     phone_number = None
 
+    print(f"🔍 DEBUG start_command: user_id={user_id}, full_name={full_name}")
+
     with database.connection.SessionLocal() as db:
         # دریافت لیست staff از دیتابیس
         operators_ids = crud.get_operators_ids(db)
         editors_ids = crud.get_editors_ids(db)
         visitors_ids = crud.get_visitors_ids(db)
+
+        print(f"🔍 DEBUG Staff IDs from DB: operators={operators_ids}, editors={editors_ids}, visitors={visitors_ids}")
 
         # اگر ادمین بود
         if user_id == ADMIN_ID:
@@ -42,6 +46,7 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> i
 
         # اگر اپراتور بود
         elif user_id in operators_ids:
+            print(f"🔍 DEBUG User {user_id} IS an operator!")
             from keyboards.operator import get_operator_kb
             await update.message.reply_text(
                 "سلام، اپراتور عزیز! به ربات خوش آمدید.",

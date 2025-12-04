@@ -46,6 +46,8 @@ def get_operator_kb() -> ReplyKeyboardMarkup:
         ["🔙 منوی اصلی"]  # فقط یک دکمه برای بازگشت
     ]
 
+    print(f"🔍 DEBUG get_operator_kb called - keyboard text: '{keyboard[0][0]}'")
+
     return ReplyKeyboardMarkup(
         keyboard,
         resize_keyboard=True,
