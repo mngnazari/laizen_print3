@@ -355,24 +355,32 @@ def is_visitor(user_id: int) -> bool:
         visitors = database.crud.get_visitors_ids(db)
         return user_id in visitors
 
-# Custom filters برای staff
-def operator_filter(update: Update) -> bool:
+# Custom filter classes برای staff
+class OperatorFilter(filters.UpdateFilter):
     """Filter برای اپراتورها"""
-    if not update.effective_user:
-        return False
-    return is_operator(update.effective_user.id)
+    def filter(self, update: Update) -> bool:
+        if not update.effective_user:
+            return False
+        return is_operator(update.effective_user.id)
 
-def editor_filter(update: Update) -> bool:
+class EditorFilter(filters.UpdateFilter):
     """Filter برای ادیتورها"""
-    if not update.effective_user:
-        return False
-    return is_editor(update.effective_user.id)
+    def filter(self, update: Update) -> bool:
+        if not update.effective_user:
+            return False
+        return is_editor(update.effective_user.id)
 
-def visitor_filter(update: Update) -> bool:
+class VisitorFilter(filters.UpdateFilter):
     """Filter برای ویزیتورها"""
-    if not update.effective_user:
-        return False
-    return is_visitor(update.effective_user.id)
+    def filter(self, update: Update) -> bool:
+        if not update.effective_user:
+            return False
+        return is_visitor(update.effective_user.id)
+
+# ایجاد نمونه‌ها برای استفاده در handlers
+operator_filter = OperatorFilter()
+editor_filter = EditorFilter()
+visitor_filter = VisitorFilter()
 
 # ============================================================
 # 🟢 Main Function / تابع اصلی ربات
@@ -950,36 +958,36 @@ def main() -> None:
 
     # Editor message handlers
     application.add_handler(MessageHandler(
-        filters.Regex(r'^📝 منوی ادیتور') & filters.BaseFilter.from_callable(editor_filter),
+        filters.Regex(r'^📝 منوی ادیتور') & editor_filter,
         handle_editor_menu
     ))
 
     application.add_handler(MessageHandler(
-        filters.Document.ALL & filters.BaseFilter.from_callable(editor_filter),
+        filters.Document.ALL & editor_filter,
         handle_editor_file_upload
     ))
     logger.info("✅ Editor message handlers اضافه شد")
 
     # Operator message handlers
     application.add_handler(MessageHandler(
-        filters.Regex(r'^(📋|🔙) منوی اصلی') & filters.BaseFilter.from_callable(operator_filter),
+        filters.Regex(r'^(📋|🔙) منوی اصلی') & operator_filter,
         handle_operator_menu
     ))
 
     application.add_handler(MessageHandler(
-        filters.Regex(r'^📋 صدور فاکتور') & filters.BaseFilter.from_callable(operator_filter),
+        filters.Regex(r'^📋 صدور فاکتور') & operator_filter,
         show_customers_for_invoice
     ))
 
     application.add_handler(MessageHandler(
-        filters.Regex(r'^(📊 آمار کارهای من|👥 مشاهده مشتریان|⚙️ تنظیمات)') & filters.BaseFilter.from_callable(operator_filter),
+        filters.Regex(r'^(📊 آمار کارهای من|👥 مشاهده مشتریان|⚙️ تنظیمات)') & operator_filter,
         handle_operator_menu
     ))
     logger.info("✅ Operator message handlers اضافه شدند")
 
     # File handlers
     application.add_handler(MessageHandler(
-        filters.Document.ALL & ~filters.BaseFilter.from_callable(editor_filter) & ~filters.COMMAND,
+        filters.Document.ALL & ~editor_filter & ~filters.COMMAND,
         handle_file
     ))
     application.add_handler(
@@ -989,14 +997,14 @@ def main() -> None:
     # Customer message handlers
     # Customer message handlers
     application.add_handler(MessageHandler(
-        filters.Regex(r'^🏠 منوی اصلی$') & ~filters.User(user_id=ADMIN_ID) & ~filters.BaseFilter.from_callable(operator_filter),
+        filters.Regex(r'^🏠 منوی اصلی$') & ~filters.User(user_id=ADMIN_ID) & ~operator_filter,
         handle_customer_menu
     ))
 
     application.add_handler(MessageHandler(
         filters.Regex(
             r'^(💳 اعتبار و وضعیت سفارش‌ها|📂 آرشیو فایل‌ها|👥 زیرمجموعه‌ها|🧾 فاکتورها|💼 کیف پول و اعتبار و فاکتور|📊 آمار گروهی|🎁 دعوت و کسب اعتبار)$'
-        ) & ~filters.User(user_id=ADMIN_ID) & ~filters.BaseFilter.from_callable(operator_filter),
+        ) & ~filters.User(user_id=ADMIN_ID) & ~operator_filter,
         handle_customer_menu
     ))
 
@@ -1006,7 +1014,7 @@ def main() -> None:
     application.add_handler(CommandHandler(
         "files",
         operator_files_command,
-        filters=filters.BaseFilter.from_callable(operator_filter)
+        filters=operator_filter
     ))
     logger.info("✅ Operator files command اضافه شد")
 
